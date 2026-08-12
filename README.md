@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Release-v1.0.0-blue?style=flat-square&logo=github" alt="Release">
+  <img src="https://img.shields.io/badge/Release-v1.1.0-blue?style=flat-square&logo=github" alt="Release">
   <img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/Style-Win11%20Fluent%20Design-0078D4?style=flat-square&logo=windows11" alt="Style">
   <img src="https://img.shields.io/badge/Python-3.9%2B-blue?style=flat-square&logo=python" alt="Python">
@@ -21,7 +21,7 @@
 
 无需安装 Python 或配置任何依赖环境，直接下载 Windows 独立单文件版：
 
-👉 **[点击前往 GitHub Releases 下载绿色单文件版 (v1.0.0)](https://github.com/treetree-sha/WordMetadataEditor/releases)**
+👉 **[点击前往 GitHub Releases 下载绿色单文件版 (v1.1.0)](https://github.com/treetree-sha/WordMetadataEditor/releases)**
 
 ---
 

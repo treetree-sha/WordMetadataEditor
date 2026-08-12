@@ -6,22 +6,22 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Release-v1.0.0-blue?style=flat-square&logo=github" alt="Release">
+  <img src="https://img.shields.io/badge/Release-v1.1.0-blue?style=flat-square&logo=github" alt="Release">
   <img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/Style-Win11%20Fluent%20Design-0078D4?style=flat-square&logo=windows11" alt="Style">
   <img src="https://img.shields.io/badge/Python-3.9%2B-blue?style=flat-square&logo=python" alt="Python">
   <img src="https://img.shields.io/badge/GUI-PySide6%20%2B%20FluentWidgets-purple?style=flat-square" alt="GUI">
 </p>
 
-A modern, elegant desktop application built with **PySide6** and **Windows 11 Fluent Design** for editing Word (`.docx`) document metadata and Windows NTFS file system timestamps.
+A modern, high-aesthetic desktop tool for modifying Word (`.docx`) metadata & Windows file system attributes, built with **PySide6** and **Windows 11 Fluent Design**.
 
 ---
 
-## 📥 Download Standalone EXE
+## 📥 Download Release (No Python Required)
 
-No Python installation required. Download the portable single executable for Windows:
+No Python installation required. Download the portable standalone `.exe` for 64-bit Windows:
 
-👉 **[Download Word Metadata Editor v1.0.0 (GitHub Releases)](https://github.com/treetree-sha/WordMetadataEditor/releases)**
+👉 **[Download Standalone Package (v1.1.0)](https://github.com/treetree-sha/WordMetadataEditor/releases)**
 
 ---
 
