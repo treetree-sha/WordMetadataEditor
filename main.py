@@ -16,6 +16,13 @@ from ui.settings_interface import SettingsInterface
 from ui.i18n import i18n
 
 
+def get_asset_path(relative_path: str) -> str:
+    """Get absolute path to resource, works for dev and for PyInstaller --onefile."""
+    if hasattr(sys, '_MEIPASS'):
+        return os.path.join(sys._MEIPASS, relative_path)
+    return os.path.join(os.path.dirname(__file__), relative_path)
+
+
 class MainWindow(FluentWindow):
     """Main Application Window with Win11 Fluent Design Navigation Sidebar."""
 
@@ -37,7 +44,7 @@ class MainWindow(FluentWindow):
         self.navigationInterface.setMinimumExpandWidth(200)
 
         # Set Window Icon
-        icon_path = os.path.join(os.path.dirname(__file__), 'assets', 'app_icon.png')
+        icon_path = get_asset_path(os.path.join('assets', 'app_icon.png'))
         if os.path.exists(icon_path):
             self.setWindowIcon(QIcon(icon_path))
 
