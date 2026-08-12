@@ -1,4 +1,5 @@
 import os
+import random
 from datetime import datetime
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import (
@@ -51,7 +52,13 @@ class BatchWorkerThread(QThread):
                         meta['author'] = self.batch_config['author']
                     if self.batch_config.get('set_modifier'):
                         meta['last_modified_by'] = self.batch_config['modifier']
-                    if self.batch_config.get('set_total_time'):
+                    if self.batch_config.get('set_random_time'):
+                        min_t = self.batch_config['min_time']
+                        max_t = self.batch_config['max_time']
+                        low, high = min(min_t, max_t), max(min_t, max_t)
+                        random_val = random.randint(low, high)
+                        meta['total_editing_time'] = str(random_val)
+                    elif self.batch_config.get('set_total_time'):
                         meta['total_editing_time'] = str(self.batch_config['total_time'])
 
                 ok = WordMetadataEngine.write_metadata(file_path, meta, sync_fs_time=self.sync_fs_time)
@@ -165,9 +172,9 @@ class BatchInterface(ScrollArea):
         row2.addWidget(self.input_modifier, 1)
         cfg_layout.addLayout(row2)
 
-        # Checkbox 3: Set Total Time
+        # Checkbox 3: Set Fixed Total Time
         row3 = QHBoxLayout()
-        self.chk_total_time = CheckBox(i18n.t("统一设置总编辑时间", "Set Unified Total Editing Time"), config_card)
+        self.chk_total_time = CheckBox(i18n.t("统一固定总编辑时间", "Set Fixed Total Editing Time"), config_card)
         self.spin_total_time = SpinBox(config_card)
         self.spin_total_time.setRange(0, 999999)
         self.spin_total_time.setValue(120)
@@ -177,6 +184,30 @@ class BatchInterface(ScrollArea):
         row3.addWidget(self.lbl_minutes)
         row3.addStretch(1)
         cfg_layout.addLayout(row3)
+
+        # Checkbox 3.5: Set Random Total Time Range
+        row3_5 = QHBoxLayout()
+        self.chk_random_time = CheckBox(i18n.t("随机生成总编辑时间 (指定范围)", "Random Total Time within Range"), config_card)
+        self.spin_min_time = SpinBox(config_card)
+        self.spin_min_time.setRange(0, 999999)
+        self.spin_min_time.setValue(30)
+        self.lbl_range_to = CaptionLabel(i18n.t("至", "to"), config_card)
+        self.spin_max_time = SpinBox(config_card)
+        self.spin_max_time.setRange(0, 999999)
+        self.spin_max_time.setValue(180)
+        self.lbl_random_minutes = CaptionLabel(i18n.t("分钟", "Minutes"), config_card)
+
+        row3_5.addWidget(self.chk_random_time)
+        row3_5.addWidget(self.spin_min_time)
+        row3_5.addWidget(self.lbl_range_to)
+        row3_5.addWidget(self.spin_max_time)
+        row3_5.addWidget(self.lbl_random_minutes)
+        row3_5.addStretch(1)
+        cfg_layout.addLayout(row3_5)
+
+        # Mutually exclusive checkboxes for total time vs random time
+        self.chk_total_time.stateChanged.connect(self._on_fixed_time_checked)
+        self.chk_random_time.stateChanged.connect(self._on_random_time_checked)
 
         # Checkbox 4: Anonymize
         row4 = QHBoxLayout()
@@ -216,6 +247,14 @@ class BatchInterface(ScrollArea):
 
         self.main_layout.addWidget(exec_card)
 
+    def _on_fixed_time_checked(self, state):
+        if state == Qt.Checked and self.chk_random_time.isChecked():
+            self.chk_random_time.setChecked(False)
+
+    def _on_random_time_checked(self, state):
+        if state == Qt.Checked and self.chk_total_time.isChecked():
+            self.chk_total_time.setChecked(False)
+
     def _set_table_headers(self):
         self.table.setHorizontalHeaderLabels([
             i18n.t("文件名", "File Name"),
@@ -245,8 +284,11 @@ class BatchInterface(ScrollArea):
         self.input_author.setPlaceholderText(i18n.t("填入新作者姓名", "Enter new author name"))
         self.chk_modifier.setText(i18n.t("统一设置修改人", "Set Unified Modifier"))
         self.input_modifier.setPlaceholderText(i18n.t("填入新修改人姓名", "Enter new modifier name"))
-        self.chk_total_time.setText(i18n.t("统一设置总编辑时间", "Set Unified Total Editing Time"))
+        self.chk_total_time.setText(i18n.t("统一固定总编辑时间", "Set Fixed Total Editing Time"))
         self.lbl_minutes.setText(i18n.t("分钟", "Minutes"))
+        self.chk_random_time.setText(i18n.t("随机生成总编辑时间 (指定范围)", "Random Total Time within Range"))
+        self.lbl_range_to.setText(i18n.t("至", "to"))
+        self.lbl_random_minutes.setText(i18n.t("分钟", "Minutes"))
         self.chk_anonymize.setText(i18n.t("一键隐私脱敏 (清空所有作者与公司信息)", "Anonymize All (Clear author & company info)"))
         self.lbl_sync_fs.setText(i18n.t("同步修改系统文件时间记录", "Sync OS File System Timestamps"))
         self.btn_run_batch.setText(i18n.t("开始批量执行修改", "Start Batch Processing"))
@@ -328,10 +370,19 @@ class BatchInterface(ScrollArea):
             'modifier': self.input_modifier.text().strip(),
             'set_total_time': self.chk_total_time.isChecked(),
             'total_time': self.spin_total_time.value(),
+            'set_random_time': self.chk_random_time.isChecked(),
+            'min_time': self.spin_min_time.value(),
+            'max_time': self.spin_max_time.value(),
             'anonymize': self.chk_anonymize.isChecked()
         }
 
-        if not any([batch_config['set_author'], batch_config['set_modifier'], batch_config['set_total_time'], batch_config['anonymize']]):
+        if not any([
+            batch_config['set_author'],
+            batch_config['set_modifier'],
+            batch_config['set_total_time'],
+            batch_config['set_random_time'],
+            batch_config['anonymize']
+        ]):
             InfoBar.warning(
                 title=i18n.t("提示", "Notice"),
                 content=i18n.t("请至少勾选一种批量修改规则（如：统一修改作者或脱敏）", "Please select at least one modification rule"),
