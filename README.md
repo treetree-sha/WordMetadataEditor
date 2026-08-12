@@ -78,7 +78,12 @@ WordMetadataEditor/
 
 ### 1. 本地启动运行
 - **方法一**：在 Windows 资源管理器中双击 **`run.bat`**。
-- **方法二**：命令行运行 `python main.py` 或 `D:\Programs\Anaconda\python.exe main.py`。
+- **方法二**：命令行启动
+使用 Python 环境运行 `main.py`：
+
+```bash
+python main.py
+```
 
 ### 2. 打包为 Windows 单文件 EXE
 使用 PyInstaller 进行打包：

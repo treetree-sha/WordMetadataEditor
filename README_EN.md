@@ -78,7 +78,7 @@ WordMetadataEditor/
 
 ### 1. Run Locally
 - **Method 1**: Double-click `run.bat` in Windows File Explorer.
-- **Method 2**: Run `python main.py` or `D:\Programs\Anaconda\python.exe main.py`.
+- **Method 2**: Run `python main.py` in your terminal.
 
 ### 2. Build Standalone EXE
 Pack into a single executable using PyInstaller:

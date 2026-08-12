@@ -24,3 +24,6 @@ dist/
 
 # Test documents
 test_documents/
+
+# Agents workspace rules
+.agents/
