@@ -27,3 +27,7 @@ test_documents/
 
 # Agents workspace rules
 .agents/
+
+# Local startup batch script
+run.bat
+
