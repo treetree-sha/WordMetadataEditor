@@ -138,6 +138,10 @@ class WordMetadataEngine:
                     if subject_node is not None and subject_node.text:
                         metadata['subject'] = subject_node.text
 
+                    comments_node = root.find('dc:description', NAMESPACES)
+                    if comments_node is not None and comments_node.text:
+                        metadata['comments'] = comments_node.text
+
                 # Read docProps/app.xml
                 if 'docProps/app.xml' in zf.namelist():
                     app_xml = zf.read('docProps/app.xml')
@@ -260,6 +264,8 @@ class WordMetadataEngine:
             set_or_create('dc:title', new_meta['title'])
         if 'subject' in new_meta:
             set_or_create('dc:subject', new_meta['subject'])
+        if 'comments' in new_meta:
+            set_or_create('dc:description', new_meta['comments'])
 
         return ET.tostring(root, encoding='utf-8', xml_declaration=True)
 

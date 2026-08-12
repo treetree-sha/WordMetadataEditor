@@ -158,6 +158,17 @@ class SingleFileInterface(ScrollArea):
         row2.addLayout(r2_v2)
         ac_layout.addLayout(row2)
 
+        # Row 3: Comments
+        row3 = QHBoxLayout()
+        r3_v1 = QVBoxLayout()
+        self.lbl_comments = CaptionLabel(i18n.t("备注 / 摘要说明 (Comments)", "Comments / Description"), author_card)
+        r3_v1.addWidget(self.lbl_comments)
+        self.comments_input = LineEdit(author_card)
+        self.comments_input.setPlaceholderText(i18n.t("例如: 本文档包含内部保密数据", "e.g. Internal confidential document"))
+        r3_v1.addWidget(self.comments_input)
+        row3.addLayout(r3_v1)
+        ac_layout.addLayout(row3)
+
         form_layout.addWidget(author_card)
 
         # Card B: Time & Revision Properties
@@ -296,6 +307,8 @@ class SingleFileInterface(ScrollArea):
         self.company_input.setPlaceholderText(i18n.t("例如: Microsoft Corporation", "e.g. Acme Corp"))
         self.lbl_doc_title.setText(i18n.t("文档标题 (Title)", "Document Title"))
         self.title_input.setPlaceholderText(i18n.t("例如: 2026年度财务分析报告", "e.g. Annual Financial Report"))
+        self.lbl_comments.setText(i18n.t("备注 / 摘要说明 (Comments)", "Comments / Description"))
+        self.comments_input.setPlaceholderText(i18n.t("例如: 本文档包含内部保密数据", "e.g. Internal confidential document"))
 
         self.time_card_title.setText(i18n.t("时间戳与统计数据", "Timestamps & Statistics"))
         self.lbl_created_time.setText(i18n.t("创建时间 (Created Time)", "Created Time"))
@@ -349,6 +362,7 @@ class SingleFileInterface(ScrollArea):
         self.last_mod_by_input.setText(meta.get('last_modified_by', ''))
         self.company_input.setText(meta.get('company', ''))
         self.title_input.setText(meta.get('title', ''))
+        self.comments_input.setText(meta.get('comments', ''))
 
         # Time formatting
         c_time = meta.get('created_time', '')
@@ -393,6 +407,7 @@ class SingleFileInterface(ScrollArea):
             'last_modified_by': self.last_mod_by_input.text().strip(),
             'company': self.company_input.text().strip(),
             'title': self.title_input.text().strip(),
+            'comments': self.comments_input.text().strip(),
             'total_editing_time': str(self.total_time_spin.value()),
             'revision': str(self.revision_spin.value())
         }
@@ -450,6 +465,7 @@ class SingleFileInterface(ScrollArea):
         self.author_input.setText("")
         self.last_mod_by_input.setText("")
         self.company_input.setText("")
+        self.comments_input.setText("")
         self.total_time_spin.setValue(0)
         self.revision_spin.setValue(1)
 

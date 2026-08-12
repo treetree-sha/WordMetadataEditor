@@ -46,6 +46,7 @@ class BatchWorkerThread(QThread):
                     meta['author'] = ''
                     meta['last_modified_by'] = ''
                     meta['company'] = ''
+                    meta['comments'] = ''
                     meta['total_editing_time'] = '0'
                     meta['created'] = ''
                 else:
@@ -53,6 +54,8 @@ class BatchWorkerThread(QThread):
                         meta['author'] = self.batch_config['author']
                     if self.batch_config.get('set_modifier'):
                         meta['last_modified_by'] = self.batch_config['modifier']
+                    if self.batch_config.get('set_comments'):
+                        meta['comments'] = self.batch_config['comments']
 
                     # Handle Total Editing Time
                     if self.batch_config.get('set_random_time'):
@@ -188,6 +191,15 @@ class BatchInterface(ScrollArea):
         row2.addWidget(self.chk_modifier)
         row2.addWidget(self.input_modifier, 1)
         cfg_layout.addLayout(row2)
+
+        # Checkbox 2.5: Set Comments
+        row2_5 = QHBoxLayout()
+        self.chk_comments = CheckBox(i18n.t("统一设置备注", "Set Unified Comments"), config_card)
+        self.input_comments = LineEdit(config_card)
+        self.input_comments.setPlaceholderText(i18n.t("填入新备注内容", "Enter new comments"))
+        row2_5.addWidget(self.chk_comments)
+        row2_5.addWidget(self.input_comments, 1)
+        cfg_layout.addLayout(row2_5)
 
         # Checkbox 3: Set Fixed Total Time
         row3 = QHBoxLayout()
@@ -339,6 +351,8 @@ class BatchInterface(ScrollArea):
         self.input_author.setPlaceholderText(i18n.t("填入新作者姓名", "Enter new author name"))
         self.chk_modifier.setText(i18n.t("统一设置修改人", "Set Unified Modifier"))
         self.input_modifier.setPlaceholderText(i18n.t("填入新修改人姓名", "Enter new modifier name"))
+        self.chk_comments.setText(i18n.t("统一设置备注", "Set Unified Comments"))
+        self.input_comments.setPlaceholderText(i18n.t("填入新备注内容", "Enter new comments"))
         self.chk_total_time.setText(i18n.t("统一固定总编辑时间", "Set Fixed Total Editing Time"))
         self.lbl_minutes.setText(i18n.t("分钟", "Minutes"))
         self.chk_random_time.setText(i18n.t("随机生成总编辑时间 (指定范围)", "Random Total Time within Range"))
@@ -426,6 +440,8 @@ class BatchInterface(ScrollArea):
             'author': self.input_author.text().strip(),
             'set_modifier': self.chk_modifier.isChecked(),
             'modifier': self.input_modifier.text().strip(),
+            'set_comments': self.chk_comments.isChecked(),
+            'comments': self.input_comments.text().strip(),
             'set_total_time': self.chk_total_time.isChecked(),
             'total_time': self.spin_total_time.value(),
             'set_random_time': self.chk_random_time.isChecked(),
@@ -442,6 +458,7 @@ class BatchInterface(ScrollArea):
         if not any([
             batch_config['set_author'],
             batch_config['set_modifier'],
+            batch_config['set_comments'],
             batch_config['set_total_time'],
             batch_config['set_random_time'],
             batch_config['set_created_time'],
