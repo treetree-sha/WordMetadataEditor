@@ -22,3 +22,5 @@ build/
 dist/
 *.spec
 
+# Test documents
+test_documents/
