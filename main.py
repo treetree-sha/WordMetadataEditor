@@ -36,6 +36,11 @@ class MainWindow(FluentWindow):
         self.navigationInterface.setExpandWidth(220)
         self.navigationInterface.setMinimumExpandWidth(200)
 
+        # Set Window Icon
+        icon_path = os.path.join(os.path.dirname(__file__), 'assets', 'app_icon.png')
+        if os.path.exists(icon_path):
+            self.setWindowIcon(QIcon(icon_path))
+
         self.update_theme_style()
         self._init_navigation()
         self.retranslate_ui()
