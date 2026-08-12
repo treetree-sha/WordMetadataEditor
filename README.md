@@ -6,6 +6,10 @@
 </p>
 
 <p align="center">
+  <img src="assets/app_icon.png" width="128" height="128" alt="Word Metadata Editor Icon">
+</p>
+
+<p align="center">
   <img src="https://img.shields.io/badge/Release-v1.1.0-blue?style=flat-square&logo=github" alt="Release">
   <img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/Style-Win11%20Fluent%20Design-0078D4?style=flat-square&logo=windows11" alt="Style">
@@ -14,6 +18,16 @@
 </p>
 
 一套基于 **PySide6** 与 **Windows 11 Fluent Design** 打造的高颜值 Word (`.docx`) 文档元数据及文件系统属性高级修改软件。
+
+---
+
+## 📋 Release v1.1.0 更新日志 (Changelog)
+
+- 📝 **新增【备注 / 摘要说明 (Comments)】编辑**：单文件精细编辑与批量处理模式全面支持查看、统一修改 Word 文档备注（`dc:description`）信息，脱敏时支持一键清空。
+- 🎲 **新增【随机编辑总时长范围】与【随机创建时间范围】**：批量修改模式下新增在指定区间内（如 30~180 分钟）随机生成总编辑时间与创建时间。
+- 🎨 **全新 Win11 3D Fluent Design 软件图标**：内置专属设计的 3D 立体悬浮图标，打包为 `.exe` 文件后窗口与任务栏完整原生呈现。
+- 🛡️ **本地隐私安全隔离**：优化脚本启动配置与路径保护，`.agents` 配置与本地开发路径已安全隔离。
+- ⚡ **打包体积与启动优化**：优化 PyInstaller 打包构建流程，剔除冗余依赖，软件体积更小且启动迅速。
 
 ---
 
@@ -88,7 +102,7 @@ python main.py
 ### 2. 打包为 Windows 单文件 EXE
 使用 PyInstaller 进行打包：
 ```bash
-pyinstaller --noconsole --onefile --name "WordMetadataEditor" --exclude-module PyQt5 --clean main.py
+pyinstaller --noconsole --onefile --icon="assets/app_icon.ico" --add-data "assets;assets" --name "WordMetadataEditor" --exclude-module PyQt5 --clean main.py
 ```
 
 ---

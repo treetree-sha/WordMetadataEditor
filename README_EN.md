@@ -6,6 +6,10 @@
 </p>
 
 <p align="center">
+  <img src="assets/app_icon.png" width="128" height="128" alt="Word Metadata Editor Icon">
+</p>
+
+<p align="center">
   <img src="https://img.shields.io/badge/Release-v1.1.0-blue?style=flat-square&logo=github" alt="Release">
   <img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/Style-Win11%20Fluent%20Design-0078D4?style=flat-square&logo=windows11" alt="Style">
@@ -14,6 +18,16 @@
 </p>
 
 A modern, high-aesthetic desktop tool for modifying Word (`.docx`) metadata & Windows file system attributes, built with **PySide6** and **Windows 11 Fluent Design**.
+
+---
+
+## 📋 Release v1.1.0 Changelog
+
+- 📝 **Comments / Description Editing**: Full support for viewing and editing Word comments metadata (`dc:description`) in single and batch modes, with auto-scrubbing during anonymization.
+- 🎲 **Randomized Total Editing Time & Creation Date**: Specify customized min/max ranges for generating random editing durations and creation timestamps in batch operations.
+- 🎨 **New 3D Win11 Fluent Design Icon**: Built-in 3D glassmorphism application logo, natively embedded into executables for window and taskbar rendering.
+- 🛡️ **Privacy & Path Isolation**: Enhanced launch scripts and `.agents` workspace rule isolation to safeguard local private paths.
+- ⚡ **Build Optimization**: Optimized PyInstaller build flags with asset bundling and exclusion of unused dependencies.
 
 ---
 
@@ -83,7 +97,7 @@ WordMetadataEditor/
 ### 2. Build Standalone EXE
 Pack into a single executable using PyInstaller:
 ```bash
-pyinstaller --noconsole --onefile --name "WordMetadataEditor" --exclude-module PyQt5 --clean main.py
+pyinstaller --noconsole --onefile --icon="assets/app_icon.ico" --add-data "assets;assets" --name "WordMetadataEditor" --exclude-module PyQt5 --clean main.py
 ```
 
 ---
