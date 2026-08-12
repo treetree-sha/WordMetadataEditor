@@ -1,7 +1,7 @@
 import os
 import random
 from datetime import datetime
-from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtCore import Qt, QThread, Signal, QDateTime
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFileDialog, QHeaderView, QTableWidgetItem
 )
@@ -10,7 +10,7 @@ from qfluentwidgets import (
     ScrollArea, CardWidget, LineEdit, SpinBox, SwitchButton,
     PrimaryPushButton, PushButton, InfoBar, InfoBarPosition, TitleLabel,
     CaptionLabel, FluentIcon, TableWidget, ProgressBar, CheckBox,
-    StrongBodyLabel
+    StrongBodyLabel, DateTimeEdit
 )
 
 from metadata_engine import WordMetadataEngine
@@ -47,11 +47,14 @@ class BatchWorkerThread(QThread):
                     meta['last_modified_by'] = ''
                     meta['company'] = ''
                     meta['total_editing_time'] = '0'
+                    meta['created'] = ''
                 else:
                     if self.batch_config.get('set_author'):
                         meta['author'] = self.batch_config['author']
                     if self.batch_config.get('set_modifier'):
                         meta['last_modified_by'] = self.batch_config['modifier']
+
+                    # Handle Total Editing Time
                     if self.batch_config.get('set_random_time'):
                         min_t = self.batch_config['min_time']
                         max_t = self.batch_config['max_time']
@@ -60,6 +63,20 @@ class BatchWorkerThread(QThread):
                         meta['total_editing_time'] = str(random_val)
                     elif self.batch_config.get('set_total_time'):
                         meta['total_editing_time'] = str(self.batch_config['total_time'])
+
+                    # Handle Creation Time
+                    if self.batch_config.get('set_random_created_time'):
+                        start_dt = self.batch_config['start_created_time']
+                        end_dt = self.batch_config['end_created_time']
+                        start_ts = int(start_dt.timestamp())
+                        end_ts = int(end_dt.timestamp())
+                        low_ts, high_ts = min(start_ts, end_ts), max(start_ts, end_ts)
+                        rand_ts = random.randint(low_ts, high_ts)
+                        rand_dt = datetime.fromtimestamp(rand_ts)
+                        meta['created'] = rand_dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+                    elif self.batch_config.get('set_created_time'):
+                        dt_val = self.batch_config['created_time']
+                        meta['created'] = dt_val.strftime('%Y-%m-%dT%H:%M:%SZ')
 
                 ok = WordMetadataEngine.write_metadata(file_path, meta, sync_fs_time=self.sync_fs_time)
                 if ok:
@@ -103,8 +120,8 @@ class BatchInterface(ScrollArea):
         self.title_label = TitleLabel(i18n.t("批量文件属性修改", "Batch Document Metadata Editor"), self)
         self.subtitle_label = CaptionLabel(
             i18n.t(
-                "批量导入 Word 文档，一键统一修改作者、编辑时间或进行脱敏处理",
-                "Batch import Word documents to unify author, editing time, or anonymize in bulk"
+                "批量导入 Word 文档，一键统一修改作者、编辑时间、创建时间或进行脱敏处理",
+                "Batch import Word documents to unify author, editing time, creation time, or anonymize in bulk"
             ),
             self
         )
@@ -209,7 +226,37 @@ class BatchInterface(ScrollArea):
         self.chk_total_time.stateChanged.connect(self._on_fixed_time_checked)
         self.chk_random_time.stateChanged.connect(self._on_random_time_checked)
 
-        # Checkbox 4: Anonymize
+        # Checkbox 4: Set Fixed Creation Time
+        row6 = QHBoxLayout()
+        self.chk_created_time = CheckBox(i18n.t("统一固定文件创建时间", "Set Fixed File Creation Time"), config_card)
+        self.dt_created_time = DateTimeEdit(config_card)
+        self.dt_created_time.setDateTime(QDateTime.currentDateTime())
+        row6.addWidget(self.chk_created_time)
+        row6.addWidget(self.dt_created_time)
+        row6.addStretch(1)
+        cfg_layout.addLayout(row6)
+
+        # Checkbox 5: Set Random Creation Time Range
+        row7 = QHBoxLayout()
+        self.chk_random_created_time = CheckBox(i18n.t("随机生成文件创建时间 (指定范围)", "Random Creation Time within Range"), config_card)
+        self.dt_start_created_time = DateTimeEdit(config_card)
+        self.dt_start_created_time.setDateTime(QDateTime.currentDateTime().addDays(-30))
+        self.lbl_created_range_to = CaptionLabel(i18n.t("至", "to"), config_card)
+        self.dt_end_created_time = DateTimeEdit(config_card)
+        self.dt_end_created_time.setDateTime(QDateTime.currentDateTime())
+
+        row7.addWidget(self.chk_random_created_time)
+        row7.addWidget(self.dt_start_created_time)
+        row7.addWidget(self.lbl_created_range_to)
+        row7.addWidget(self.dt_end_created_time)
+        row7.addStretch(1)
+        cfg_layout.addLayout(row7)
+
+        # Mutually exclusive checkboxes for fixed created time vs random created time
+        self.chk_created_time.stateChanged.connect(self._on_fixed_created_time_checked)
+        self.chk_random_created_time.stateChanged.connect(self._on_random_created_time_checked)
+
+        # Checkbox 6: Anonymize
         row4 = QHBoxLayout()
         self.chk_anonymize = CheckBox(i18n.t("一键隐私脱敏 (清空所有作者与公司信息)", "Anonymize All (Clear author & company info)"), config_card)
         row4.addWidget(self.chk_anonymize)
@@ -255,6 +302,14 @@ class BatchInterface(ScrollArea):
         if state == Qt.Checked and self.chk_total_time.isChecked():
             self.chk_total_time.setChecked(False)
 
+    def _on_fixed_created_time_checked(self, state):
+        if state == Qt.Checked and self.chk_random_created_time.isChecked():
+            self.chk_random_created_time.setChecked(False)
+
+    def _on_random_created_time_checked(self, state):
+        if state == Qt.Checked and self.chk_created_time.isChecked():
+            self.chk_created_time.setChecked(False)
+
     def _set_table_headers(self):
         self.table.setHorizontalHeaderLabels([
             i18n.t("文件名", "File Name"),
@@ -269,8 +324,8 @@ class BatchInterface(ScrollArea):
         self.title_label.setText(i18n.t("批量文件属性修改", "Batch Document Metadata Editor"))
         self.subtitle_label.setText(
             i18n.t(
-                "批量导入 Word 文档，一键统一修改作者、编辑时间或进行脱敏处理",
-                "Batch import Word documents to unify author, editing time, or anonymize in bulk"
+                "批量导入 Word 文档，一键统一修改作者、编辑时间、创建时间或进行脱敏处理",
+                "Batch import Word documents to unify author, editing time, creation time, or anonymize in bulk"
             )
         )
         self.btn_add_files.setText(i18n.t("添加文件...", "Add Files..."))
@@ -289,6 +344,9 @@ class BatchInterface(ScrollArea):
         self.chk_random_time.setText(i18n.t("随机生成总编辑时间 (指定范围)", "Random Total Time within Range"))
         self.lbl_range_to.setText(i18n.t("至", "to"))
         self.lbl_random_minutes.setText(i18n.t("分钟", "Minutes"))
+        self.chk_created_time.setText(i18n.t("统一固定文件创建时间", "Set Fixed File Creation Time"))
+        self.chk_random_created_time.setText(i18n.t("随机生成文件创建时间 (指定范围)", "Random Creation Time within Range"))
+        self.lbl_created_range_to.setText(i18n.t("至", "to"))
         self.chk_anonymize.setText(i18n.t("一键隐私脱敏 (清空所有作者与公司信息)", "Anonymize All (Clear author & company info)"))
         self.lbl_sync_fs.setText(i18n.t("同步修改系统文件时间记录", "Sync OS File System Timestamps"))
         self.btn_run_batch.setText(i18n.t("开始批量执行修改", "Start Batch Processing"))
@@ -373,6 +431,11 @@ class BatchInterface(ScrollArea):
             'set_random_time': self.chk_random_time.isChecked(),
             'min_time': self.spin_min_time.value(),
             'max_time': self.spin_max_time.value(),
+            'set_created_time': self.chk_created_time.isChecked(),
+            'created_time': self.dt_created_time.dateTime().toPython(),
+            'set_random_created_time': self.chk_random_created_time.isChecked(),
+            'start_created_time': self.dt_start_created_time.dateTime().toPython(),
+            'end_created_time': self.dt_end_created_time.dateTime().toPython(),
             'anonymize': self.chk_anonymize.isChecked()
         }
 
@@ -381,6 +444,8 @@ class BatchInterface(ScrollArea):
             batch_config['set_modifier'],
             batch_config['set_total_time'],
             batch_config['set_random_time'],
+            batch_config['set_created_time'],
+            batch_config['set_random_created_time'],
             batch_config['anonymize']
         ]):
             InfoBar.warning(
