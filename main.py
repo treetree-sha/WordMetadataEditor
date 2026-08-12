@@ -13,6 +13,7 @@ from qfluentwidgets import (
 from ui.single_file_interface import SingleFileInterface
 from ui.batch_interface import BatchInterface
 from ui.settings_interface import SettingsInterface
+from ui.i18n import i18n
 
 
 class MainWindow(FluentWindow):
@@ -24,7 +25,6 @@ class MainWindow(FluentWindow):
         setThemeColor('#0078D4') # Windows Accent Blue
 
         super().__init__()
-        self.setWindowTitle("Word 文档属性高级编辑器 (Word Metadata Editor)")
         self.resize(1080, 750)
 
         # Center window on screen
@@ -38,6 +38,9 @@ class MainWindow(FluentWindow):
 
         self.update_theme_style()
         self._init_navigation()
+        self.retranslate_ui()
+
+        i18n.languageChanged.connect(self.retranslate_ui)
 
     def update_theme_style(self):
         if isDarkTheme():
@@ -62,30 +65,41 @@ class MainWindow(FluentWindow):
         # 1. Single File Interface
         self.single_interface = SingleFileInterface(self)
         self.single_interface.setObjectName("single_interface")
-        self.addSubInterface(
+        self.item_single = self.addSubInterface(
             self.single_interface,
             FluentIcon.DOCUMENT,
-            '单文件属性精修'
+            i18n.t('单文件属性精修', 'Single File Editor')
         )
 
         # 2. Batch Interface
         self.batch_interface = BatchInterface(self)
         self.batch_interface.setObjectName("batch_interface")
-        self.addSubInterface(
+        self.item_batch = self.addSubInterface(
             self.batch_interface,
             FluentIcon.FOLDER,
-            '批量处理与脱敏'
+            i18n.t('批量处理与脱敏', 'Batch Processing')
         )
 
         # 3. Settings Interface
         self.settings_interface = SettingsInterface(self)
         self.settings_interface.setObjectName("settings_interface")
-        self.addSubInterface(
+        self.item_settings = self.addSubInterface(
             self.settings_interface,
             FluentIcon.SETTING,
-            '设置与关于',
+            i18n.t('设置与关于', 'Settings & About'),
             NavigationItemPosition.BOTTOM
         )
+
+    def retranslate_ui(self):
+        self.setWindowTitle(
+            i18n.t("Word 文档属性高级编辑器 (Word Metadata Editor)", "Word Metadata Editor")
+        )
+        if hasattr(self, 'item_single') and self.item_single:
+            self.item_single.setText(i18n.t('单文件属性精修', 'Single File Editor'))
+        if hasattr(self, 'item_batch') and self.item_batch:
+            self.item_batch.setText(i18n.t('批量处理与脱敏', 'Batch Processing'))
+        if hasattr(self, 'item_settings') and self.item_settings:
+            self.item_settings.setText(i18n.t('设置与关于', 'Settings & About'))
 
 
 if __name__ == '__main__':
@@ -98,4 +112,3 @@ if __name__ == '__main__':
     window = MainWindow()
     window.show()
     sys.exit(app.exec())
-

@@ -13,6 +13,7 @@ from qfluentwidgets import (
 )
 
 from metadata_engine import WordMetadataEngine
+from ui.i18n import i18n
 
 
 class BatchWorkerThread(QThread):
@@ -88,34 +89,41 @@ class BatchInterface(ScrollArea):
         self.main_layout.setContentsMargins(36, 36, 36, 36)
 
         self._init_ui()
+        i18n.languageChanged.connect(self.retranslate_ui)
 
     def _init_ui(self):
         # 1. Header Title
-        title_label = TitleLabel("批量文件属性修改", self)
-        subtitle_label = CaptionLabel("批量导入 Word 文档，一键统一修改作者、编辑时间或进行脱敏处理", self)
-        self.main_layout.addWidget(title_label)
-        self.main_layout.addWidget(subtitle_label)
+        self.title_label = TitleLabel(i18n.t("批量文件属性修改", "Batch Document Metadata Editor"), self)
+        self.subtitle_label = CaptionLabel(
+            i18n.t(
+                "批量导入 Word 文档，一键统一修改作者、编辑时间或进行脱敏处理",
+                "Batch import Word documents to unify author, editing time, or anonymize in bulk"
+            ),
+            self
+        )
+        self.main_layout.addWidget(self.title_label)
+        self.main_layout.addWidget(self.subtitle_label)
 
         # 2. File Import Action Bar Card
         bar_card = CardWidget(self)
         bar_layout = QHBoxLayout(bar_card)
         bar_layout.setContentsMargins(20, 16, 20, 16)
 
-        btn_add_files = PushButton(FluentIcon.DOCUMENT, "添加文件...", bar_card)
-        btn_add_files.clicked.connect(self._add_files)
+        self.btn_add_files = PushButton(FluentIcon.DOCUMENT, i18n.t("添加文件...", "Add Files..."), bar_card)
+        self.btn_add_files.clicked.connect(self._add_files)
 
-        btn_add_folder = PushButton(FluentIcon.FOLDER, "添加文件夹...", bar_card)
-        btn_add_folder.clicked.connect(self._add_folder)
+        self.btn_add_folder = PushButton(FluentIcon.FOLDER, i18n.t("添加文件夹...", "Add Folder..."), bar_card)
+        self.btn_add_folder.clicked.connect(self._add_folder)
 
-        btn_clear_list = PushButton(FluentIcon.DELETE, "清空列表", bar_card)
-        btn_clear_list.clicked.connect(self._clear_list)
+        self.btn_clear_list = PushButton(FluentIcon.DELETE, i18n.t("清空列表", "Clear List"), bar_card)
+        self.btn_clear_list.clicked.connect(self._clear_list)
 
-        bar_layout.addWidget(btn_add_files)
-        bar_layout.addWidget(btn_add_folder)
-        bar_layout.addWidget(btn_clear_list)
+        bar_layout.addWidget(self.btn_add_files)
+        bar_layout.addWidget(self.btn_add_folder)
+        bar_layout.addWidget(self.btn_clear_list)
         bar_layout.addStretch(1)
 
-        self.file_count_label = CaptionLabel("共 0 个文档", bar_card)
+        self.file_count_label = CaptionLabel(i18n.t("共 0 个文档", "0 documents total"), bar_card)
         bar_layout.addWidget(self.file_count_label)
 
         self.main_layout.addWidget(bar_card)
@@ -123,7 +131,7 @@ class BatchInterface(ScrollArea):
         # 3. File Table
         self.table = TableWidget(self)
         self.table.setColumnCount(6)
-        self.table.setHorizontalHeaderLabels(["文件名", "作者", "修改人", "总编辑时间(分)", "路径", "状态"])
+        self._set_table_headers()
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)
@@ -136,47 +144,50 @@ class BatchInterface(ScrollArea):
         cfg_layout.setContentsMargins(24, 20, 24, 20)
         cfg_layout.setSpacing(12)
 
-        cfg_layout.addWidget(StrongBodyLabel("批量修改规则配置", config_card))
+        self.config_card_title = StrongBodyLabel(i18n.t("批量修改规则配置", "Batch Modification Rules"), config_card)
+        cfg_layout.addWidget(self.config_card_title)
 
         # Checkbox 1: Set Author
         row1 = QHBoxLayout()
-        self.chk_author = CheckBox("统一设置作者", config_card)
+        self.chk_author = CheckBox(i18n.t("统一设置作者", "Set Unified Author"), config_card)
         self.input_author = LineEdit(config_card)
-        self.input_author.setPlaceholderText("填入新作者姓名")
+        self.input_author.setPlaceholderText(i18n.t("填入新作者姓名", "Enter new author name"))
         row1.addWidget(self.chk_author)
         row1.addWidget(self.input_author, 1)
         cfg_layout.addLayout(row1)
 
         # Checkbox 2: Set Modifier
         row2 = QHBoxLayout()
-        self.chk_modifier = CheckBox("统一设置修改人", config_card)
+        self.chk_modifier = CheckBox(i18n.t("统一设置修改人", "Set Unified Modifier"), config_card)
         self.input_modifier = LineEdit(config_card)
-        self.input_modifier.setPlaceholderText("填入新修改人姓名")
+        self.input_modifier.setPlaceholderText(i18n.t("填入新修改人姓名", "Enter new modifier name"))
         row2.addWidget(self.chk_modifier)
         row2.addWidget(self.input_modifier, 1)
         cfg_layout.addLayout(row2)
 
         # Checkbox 3: Set Total Time
         row3 = QHBoxLayout()
-        self.chk_total_time = CheckBox("统一设置总编辑时间", config_card)
+        self.chk_total_time = CheckBox(i18n.t("统一设置总编辑时间", "Set Unified Total Editing Time"), config_card)
         self.spin_total_time = SpinBox(config_card)
         self.spin_total_time.setRange(0, 999999)
         self.spin_total_time.setValue(120)
+        self.lbl_minutes = CaptionLabel(i18n.t("分钟", "Minutes"), config_card)
         row3.addWidget(self.chk_total_time)
         row3.addWidget(self.spin_total_time)
-        row3.addWidget(CaptionLabel("分钟", config_card))
+        row3.addWidget(self.lbl_minutes)
         row3.addStretch(1)
         cfg_layout.addLayout(row3)
 
         # Checkbox 4: Anonymize
         row4 = QHBoxLayout()
-        self.chk_anonymize = CheckBox("一键隐私脱敏 (清空所有作者与公司信息)", config_card)
+        self.chk_anonymize = CheckBox(i18n.t("一键隐私脱敏 (清空所有作者与公司信息)", "Anonymize All (Clear author & company info)"), config_card)
         row4.addWidget(self.chk_anonymize)
         cfg_layout.addLayout(row4)
 
         # Switch: OS Sync
         row5 = QHBoxLayout()
-        row5.addWidget(CaptionLabel("同步修改系统文件时间记录", config_card))
+        self.lbl_sync_fs = CaptionLabel(i18n.t("同步修改系统文件时间记录", "Sync OS File System Timestamps"), config_card)
+        row5.addWidget(self.lbl_sync_fs)
         self.sync_fs_switch = SwitchButton(config_card)
         self.sync_fs_switch.setChecked(True)
         row5.addWidget(self.sync_fs_switch)
@@ -195,7 +206,7 @@ class BatchInterface(ScrollArea):
         self.progress_bar.hide()
 
         ex_row = QHBoxLayout()
-        self.btn_run_batch = PrimaryPushButton(FluentIcon.PLAY, "开始批量执行修改", exec_card)
+        self.btn_run_batch = PrimaryPushButton(FluentIcon.PLAY, i18n.t("开始批量执行修改", "Start Batch Processing"), exec_card)
         self.btn_run_batch.clicked.connect(self._run_batch_process)
         ex_row.addWidget(self.btn_run_batch)
         ex_row.addStretch(1)
@@ -205,9 +216,59 @@ class BatchInterface(ScrollArea):
 
         self.main_layout.addWidget(exec_card)
 
+    def _set_table_headers(self):
+        self.table.setHorizontalHeaderLabels([
+            i18n.t("文件名", "File Name"),
+            i18n.t("作者", "Author"),
+            i18n.t("修改人", "Modifier"),
+            i18n.t("总编辑时间(分)", "Total Time (min)"),
+            i18n.t("路径", "Path"),
+            i18n.t("状态", "Status")
+        ])
+
+    def retranslate_ui(self):
+        self.title_label.setText(i18n.t("批量文件属性修改", "Batch Document Metadata Editor"))
+        self.subtitle_label.setText(
+            i18n.t(
+                "批量导入 Word 文档，一键统一修改作者、编辑时间或进行脱敏处理",
+                "Batch import Word documents to unify author, editing time, or anonymize in bulk"
+            )
+        )
+        self.btn_add_files.setText(i18n.t("添加文件...", "Add Files..."))
+        self.btn_add_folder.setText(i18n.t("添加文件夹...", "Add Folder..."))
+        self.btn_clear_list.setText(i18n.t("清空列表", "Clear List"))
+        self.file_count_label.setText(i18n.t(f"共 {len(self.file_paths)} 个文档", f"{len(self.file_paths)} documents total"))
+
+        self._set_table_headers()
+        self.config_card_title.setText(i18n.t("批量修改规则配置", "Batch Modification Rules"))
+        self.chk_author.setText(i18n.t("统一设置作者", "Set Unified Author"))
+        self.input_author.setPlaceholderText(i18n.t("填入新作者姓名", "Enter new author name"))
+        self.chk_modifier.setText(i18n.t("统一设置修改人", "Set Unified Modifier"))
+        self.input_modifier.setPlaceholderText(i18n.t("填入新修改人姓名", "Enter new modifier name"))
+        self.chk_total_time.setText(i18n.t("统一设置总编辑时间", "Set Unified Total Editing Time"))
+        self.lbl_minutes.setText(i18n.t("分钟", "Minutes"))
+        self.chk_anonymize.setText(i18n.t("一键隐私脱敏 (清空所有作者与公司信息)", "Anonymize All (Clear author & company info)"))
+        self.lbl_sync_fs.setText(i18n.t("同步修改系统文件时间记录", "Sync OS File System Timestamps"))
+        self.btn_run_batch.setText(i18n.t("开始批量执行修改", "Start Batch Processing"))
+
+        # Refresh table rows status text
+        for i in range(self.table.rowCount()):
+            status_item = self.table.item(i, 5)
+            if status_item:
+                curr_txt = status_item.text()
+                if curr_txt in ("待处理", "Pending"):
+                    status_item.setText(i18n.t("待处理", "Pending"))
+                elif curr_txt in ("成功", "Success"):
+                    status_item.setText(i18n.t("成功", "Success"))
+                elif curr_txt in ("失败", "Failed"):
+                    status_item.setText(i18n.t("失败", "Failed"))
+
     def _add_files(self):
         files, _ = QFileDialog.getOpenFileNames(
-            self, "选择 Word 文档", "", "Word 文档 (*.docx)"
+            self,
+            i18n.t("选择 Word 文档", "Select Word Documents"),
+            "",
+            i18n.t("Word 文档 (*.docx)", "Word Documents (*.docx)")
         )
         if files:
             for f in files:
@@ -216,7 +277,7 @@ class BatchInterface(ScrollArea):
             self._update_table()
 
     def _add_folder(self):
-        folder = QFileDialog.getExistingDirectory(self, "选择文件夹")
+        folder = QFileDialog.getExistingDirectory(self, i18n.t("选择文件夹", "Select Folder"))
         if folder:
             added_any = False
             for root, _, files in os.walk(folder):
@@ -235,7 +296,7 @@ class BatchInterface(ScrollArea):
 
     def _update_table(self):
         self.table.setRowCount(len(self.file_paths))
-        self.file_count_label.setText(f"共 {len(self.file_paths)} 个文档")
+        self.file_count_label.setText(i18n.t(f"共 {len(self.file_paths)} 个文档", f"{len(self.file_paths)} documents total"))
 
         for i, file_path in enumerate(self.file_paths):
             filename = os.path.basename(file_path)
@@ -246,13 +307,13 @@ class BatchInterface(ScrollArea):
             self.table.setItem(i, 2, QTableWidgetItem(meta.get('last_modified_by', '')))
             self.table.setItem(i, 3, QTableWidgetItem(meta.get('total_editing_time', '0')))
             self.table.setItem(i, 4, QTableWidgetItem(file_path))
-            self.table.setItem(i, 5, QTableWidgetItem("待处理"))
+            self.table.setItem(i, 5, QTableWidgetItem(i18n.t("待处理", "Pending")))
 
     def _run_batch_process(self):
         if not self.file_paths:
             InfoBar.warning(
-                title="提示",
-                content="请先添加需要修改的 Word 文档",
+                title=i18n.t("提示", "Notice"),
+                content=i18n.t("请先添加需要修改的 Word 文档", "Please add Word documents to modify first"),
                 orient=Qt.Horizontal,
                 position=InfoBarPosition.TOP,
                 duration=3000,
@@ -272,8 +333,8 @@ class BatchInterface(ScrollArea):
 
         if not any([batch_config['set_author'], batch_config['set_modifier'], batch_config['set_total_time'], batch_config['anonymize']]):
             InfoBar.warning(
-                title="提示",
-                content="请至少勾选一种批量修改规则（如：统一修改作者或脱敏）",
+                title=i18n.t("提示", "Notice"),
+                content=i18n.t("请至少勾选一种批量修改规则（如：统一修改作者或脱敏）", "Please select at least one modification rule"),
                 orient=Qt.Horizontal,
                 position=InfoBarPosition.TOP,
                 duration=3000,
@@ -294,7 +355,7 @@ class BatchInterface(ScrollArea):
         pct = int((current / total) * 100)
         self.progress_bar.setValue(pct)
         item_index = current - 1
-        status_text = "成功" if success else "失败"
+        status_text = i18n.t("成功", "Success") if success else i18n.t("失败", "Failed")
         self.table.setItem(item_index, 5, QTableWidgetItem(status_text))
 
     def _on_finished(self, success_count, fail_count):
@@ -303,8 +364,8 @@ class BatchInterface(ScrollArea):
         self._update_table()
 
         InfoBar.success(
-            title="批量处理完成",
-            content=f"已成功处理 {success_count} 个文件，失败 {fail_count} 个。",
+            title=i18n.t("批量处理完成", "Batch Processing Complete"),
+            content=i18n.t(f"已成功处理 {success_count} 个文件，失败 {fail_count} 个。", f"Successfully processed {success_count} files, failed {fail_count}."),
             orient=Qt.Horizontal,
             position=InfoBarPosition.TOP,
             duration=5000,
