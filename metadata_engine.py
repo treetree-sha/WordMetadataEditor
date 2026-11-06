@@ -1,300 +1,268 @@
+import ctypes
 import os
-import shutil
+import posixpath
 import tempfile
+import time
 import zipfile
 import xml.etree.ElementTree as ET
-from datetime import datetime
-import ctypes
 from ctypes import wintypes
+from datetime import datetime, timezone
 
-# XML Namespaces
+
 NAMESPACES = {
     'cp': 'http://schemas.openxmlformats.org/package/2006/metadata/core-properties',
     'dc': 'http://purl.org/dc/elements/1.1/',
     'dcterms': 'http://purl.org/dc/terms/',
     'dcmitype': 'http://purl.org/dc/dcmitype/',
     'xsi': 'http://www.w3.org/2001/XMLSchema-instance',
-    'ep': 'http://schemas.openxmlformats.org/officeDocument/2006/extended-properties'
+    'ep': 'http://schemas.openxmlformats.org/officeDocument/2006/extended-properties',
+    'ct': 'http://schemas.openxmlformats.org/package/2006/content-types',
+    'rel': 'http://schemas.openxmlformats.org/package/2006/relationships',
 }
-
-# Register namespaces to prevent ns0: prefixes when writing XML
 for prefix, uri in NAMESPACES.items():
     ET.register_namespace(prefix, uri)
 
+# OPC metadata is shared; document content is copied verbatim.
+OFFICE_FORMATS = {
+    '.docx': ('Word', 'word/document.xml', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml'),
+    '.docm': ('Word', 'word/document.xml', 'application/vnd.ms-word.document.macroEnabled.main+xml'),
+    '.xlsx': ('Excel', 'xl/workbook.xml', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml'),
+    '.xlsm': ('Excel', 'xl/workbook.xml', 'application/vnd.ms-excel.sheet.macroEnabled.main+xml'),
+    '.pptx': ('PowerPoint', 'ppt/presentation.xml', 'application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml'),
+    '.pptm': ('PowerPoint', 'ppt/presentation.xml', 'application/vnd.ms-powerpoint.presentation.macroEnabled.main+xml'),
+}
+SUPPORTED_EXTENSIONS = tuple(OFFICE_FORMATS)
+FILE_PATTERNS = ' '.join('*' + ext for ext in SUPPORTED_EXTENSIONS)
+CORE_FIELDS = {
+    'author': 'dc:creator', 'last_modified_by': 'cp:lastModifiedBy',
+    'created_time': 'dcterms:created', 'modified_time': 'dcterms:modified',
+    'revision': 'cp:revision', 'title': 'dc:title', 'subject': 'dc:subject',
+    'comments': 'dc:description',
+}
+APP_FIELDS = {'total_editing_time': 'ep:TotalTime', 'company': 'ep:Company', 'application': 'ep:Application'}
+PROPERTY_PARTS = {
+    'core': ('docProps/core.xml', NAMESPACES['cp'], 'coreProperties',
+             'http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties',
+             'application/vnd.openxmlformats-package.core-properties+xml'),
+    'app': ('docProps/app.xml', NAMESPACES['ep'], 'Properties',
+            'http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties',
+            'application/vnd.openxmlformats-officedocument.extended-properties+xml'),
+}
 
-def set_windows_file_times(filepath: str, created_time: datetime = None, modified_time: datetime = None, access_time: datetime = None):
-    """Update Windows file system Creation, Last Write, and Last Access times using Win32 API."""
-    if not os.path.exists(filepath):
+
+class MetadataError(ValueError):
+    """The selected file is not a readable supported Office package."""
+
+
+def is_supported_file(file_path):
+    path = os.fspath(file_path)
+    return (os.path.splitext(path)[1].lower() in OFFICE_FORMATS
+            and not os.path.basename(path).startswith('~$'))
+
+
+def format_ooxml_datetime(value):
+    """Convert local naive or offset-aware input to UTC."""
+    dt = value if isinstance(value, datetime) else datetime.fromisoformat(value.replace('Z', '+00:00'))
+    return dt.astimezone(timezone.utc).isoformat().replace('+00:00', 'Z')
+
+
+def set_windows_file_times(filepath, created_time=None, modified_time=None, access_time=None):
+    """Set NTFS times with pointer-sized Win32 handles, including on 64-bit."""
+    if os.name != 'nt' or not os.path.isfile(filepath):
         return False
-    
     try:
-        def datetime_to_filetime(dt: datetime):
+        def to_filetime(dt):
             if dt is None:
                 return None
-            timestamp = dt.timestamp()
-            filetime_val = int((timestamp + 11644473600) * 10000000)
-            return wintypes.FILETIME(filetime_val & 0xFFFFFFFF, filetime_val >> 32)
+            value = int((dt.timestamp() + 11644473600) * 10000000)
+            return wintypes.FILETIME(value & 0xFFFFFFFF, value >> 32)
 
-        ft_create = datetime_to_filetime(created_time)
-        ft_access = datetime_to_filetime(access_time or modified_time)
-        ft_write = datetime_to_filetime(modified_time)
-
-        GENERIC_WRITE = 0x40000000
-        FILE_SHARE_READ = 0x00000001
-        FILE_SHARE_WRITE = 0x00000002
-        OPEN_EXISTING = 3
-        FILE_FLAG_BACKUP_SEMANTICS = 0x02000000
-
-        kernel32 = ctypes.windll.kernel32
-        handle = kernel32.CreateFileW(
-            filepath,
-            GENERIC_WRITE,
-            FILE_SHARE_READ | FILE_SHARE_WRITE,
-            None,
-            OPEN_EXISTING,
-            FILE_FLAG_BACKUP_SEMANTICS,
-            None
-        )
-
-        if handle == -1 or handle == 0:
+        kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+        kernel32.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
+                                        wintypes.LPVOID, wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
+        kernel32.CreateFileW.restype = wintypes.HANDLE
+        kernel32.SetFileTime.argtypes = [wintypes.HANDLE] + [ctypes.POINTER(wintypes.FILETIME)] * 3
+        kernel32.SetFileTime.restype = wintypes.BOOL
+        kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+        kernel32.CloseHandle.restype = wintypes.BOOL
+        handle = kernel32.CreateFileW(os.path.abspath(filepath), 0x100, 0x3, None, 3, 0x80, None)
+        if handle in (None, ctypes.c_void_p(-1).value):
             return False
-
-        p_create = ctypes.byref(ft_create) if ft_create else None
-        p_access = ctypes.byref(ft_access) if ft_access else None
-        p_write = ctypes.byref(ft_write) if ft_write else None
-
-        result = kernel32.SetFileTime(handle, p_create, p_access, p_write)
-        kernel32.CloseHandle(handle)
-        return bool(result)
-    except Exception as e:
-        print(f"Error setting file times: {e}")
+        try:
+            times = [to_filetime(dt) for dt in (created_time, access_time, modified_time)]
+            return bool(kernel32.SetFileTime(handle, *[ctypes.byref(ft) if ft else None for ft in times]))
+        finally:
+            kernel32.CloseHandle(handle)
+    except (OSError, ValueError, OverflowError):
         return False
 
 
-class WordMetadataEngine:
-    """Engine to inspect and update Word (.docx) document metadata."""
+class OfficeMetadataEngine:
+    """Read/write Word, Excel and PowerPoint metadata without resaving content."""
 
     @staticmethod
-    def read_metadata(file_path: str) -> dict:
-        """Read all relevant metadata from a .docx file."""
-        metadata = {
-            'author': '',
-            'last_modified_by': '',
-            'created_time': '',
-            'modified_time': '',
-            'revision': '1',
-            'title': '',
-            'subject': '',
-            'total_editing_time': '0', # In minutes
-            'company': '',
-            'application': '',
-            # File system info
-            'fs_created_time': '',
-            'fs_modified_time': '',
-            'file_size': 0
-        }
+    def _inspect_package(zf, file_path):
+        if not is_supported_file(file_path):
+            raise MetadataError('Unsupported Office file format')
+        names = zf.namelist()
+        if len(names) != len(set(names)):
+            raise MetadataError('Duplicate package entries')
+        _, main_part, content_type = OFFICE_FORMATS[os.path.splitext(file_path)[1].lower()]
+        types = ET.fromstring(zf.read('[Content_Types].xml'))
+        rels = ET.fromstring(zf.read('_rels/.rels'))
+        overrides = {node.get('PartName'): node.get('ContentType') for node in types}
+        if main_part not in names or overrides.get('/' + main_part) != content_type:
+            raise MetadataError('File extension does not match the Office package')
+        paths = {}
+        for kind, (default, ns, root_tag, rel_type, _) in PROPERTY_PARTS.items():
+            related = [node for node in rels if node.get('Type') == rel_type]
+            if len(related) > 1:
+                raise MetadataError('Duplicate property relationships')
+            target = default
+            if related:
+                if related[0].get('TargetMode') == 'External':
+                    raise MetadataError('External property relationships are unsupported')
+                target = posixpath.normpath(related[0].get('Target', '').lstrip('/'))
+                if target in ('', '.', '..') or target.startswith('../'):
+                    raise MetadataError('Invalid property part path')
+            if target in names:
+                root = ET.fromstring(zf.read(target))
+                if root.tag != f'{{{ns}}}{root_tag}':
+                    raise MetadataError('Invalid property XML root')
+            paths[kind] = target
+        if len(set(paths.values())) != len(paths) or any(
+                path in (main_part, '[Content_Types].xml', '_rels/.rels') for path in paths.values()):
+            raise MetadataError('Invalid property part path')
+        return types, rels, paths
 
-        if not os.path.exists(file_path) or not file_path.lower().endswith('.docx'):
-            return metadata
-
-        # File system info
-        stat = os.stat(file_path)
-        metadata['file_size'] = stat.st_size
-        metadata['fs_created_time'] = datetime.fromtimestamp(stat.st_ctime).strftime('%Y-%m-%d %H:%M:%S')
-        metadata['fs_modified_time'] = datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')
-
+    @staticmethod
+    def read_metadata(file_path):
+        file_path = os.fspath(file_path)
         try:
             with zipfile.ZipFile(file_path, 'r') as zf:
-                # Read docProps/core.xml
-                if 'docProps/core.xml' in zf.namelist():
-                    core_xml = zf.read('docProps/core.xml')
-                    root = ET.fromstring(core_xml)
-                    
-                    creator_node = root.find('dc:creator', NAMESPACES)
-                    if creator_node is not None and creator_node.text:
-                        metadata['author'] = creator_node.text
-                    
-                    last_mod_node = root.find('cp:lastModifiedBy', NAMESPACES)
-                    if last_mod_node is not None and last_mod_node.text:
-                        metadata['last_modified_by'] = last_mod_node.text
-
-                    created_node = root.find('dcterms:created', NAMESPACES)
-                    if created_node is not None and created_node.text:
-                        metadata['created_time'] = created_node.text
-
-                    modified_node = root.find('dcterms:modified', NAMESPACES)
-                    if modified_node is not None and modified_node.text:
-                        metadata['modified_time'] = modified_node.text
-
-                    rev_node = root.find('cp:revision', NAMESPACES)
-                    if rev_node is not None and rev_node.text:
-                        metadata['revision'] = rev_node.text
-
-                    title_node = root.find('dc:title', NAMESPACES)
-                    if title_node is not None and title_node.text:
-                        metadata['title'] = title_node.text
-
-                    subject_node = root.find('dc:subject', NAMESPACES)
-                    if subject_node is not None and subject_node.text:
-                        metadata['subject'] = subject_node.text
-
-                    comments_node = root.find('dc:description', NAMESPACES)
-                    if comments_node is not None and comments_node.text:
-                        metadata['comments'] = comments_node.text
-
-                # Read docProps/app.xml
-                if 'docProps/app.xml' in zf.namelist():
-                    app_xml = zf.read('docProps/app.xml')
-                    root = ET.fromstring(app_xml)
-
-                    total_time_node = root.find('ep:TotalTime', NAMESPACES)
-                    if total_time_node is None:
-                        for elem in root.iter():
-                            if elem.tag.endswith('TotalTime'):
-                                total_time_node = elem
-                                break
-
-                    if total_time_node is not None and total_time_node.text:
-                        metadata['total_editing_time'] = total_time_node.text
-
-                    company_node = root.find('ep:Company', NAMESPACES)
-                    if company_node is None:
-                        for elem in root.iter():
-                            if elem.tag.endswith('Company'):
-                                company_node = elem
-                                break
-                    if company_node is not None and company_node.text:
-                        metadata['company'] = company_node.text
-
-                    app_node = root.find('ep:Application', NAMESPACES)
-                    if app_node is None:
-                        for elem in root.iter():
-                            if elem.tag.endswith('Application'):
-                                app_node = elem
-                                break
-                    if app_node is not None and app_node.text:
-                        metadata['application'] = app_node.text
-
-        except Exception as e:
-            print(f"Error reading docx metadata: {e}")
-
-        return metadata
+                _, _, paths = OfficeMetadataEngine._inspect_package(zf, file_path)
+                metadata = {key: '' for key in (*CORE_FIELDS, *APP_FIELDS)}
+                metadata.update(revision='1', total_editing_time='0')
+                for kind, fields in (('core', CORE_FIELDS), ('app', APP_FIELDS)):
+                    if paths[kind] in zf.namelist():
+                        root = ET.fromstring(zf.read(paths[kind]))
+                        for key, tag in fields.items():
+                            node = root.find(tag, NAMESPACES)
+                            if node is not None and node.text:
+                                metadata[key] = node.text
+            stat = os.stat(file_path)
+            metadata.update(
+                file_size=stat.st_size,
+                fs_created_time=datetime.fromtimestamp(stat.st_ctime).strftime('%Y-%m-%d %H:%M:%S'),
+                fs_modified_time=datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S'),
+            )
+            return metadata
+        except (OSError, KeyError, ET.ParseError, zipfile.BadZipFile, RuntimeError, ValueError) as exc:
+            raise MetadataError(f'Cannot read Office metadata: {exc}') from exc
 
     @staticmethod
-    def write_metadata(file_path: str, new_meta: dict, sync_fs_time: bool = True) -> bool:
-        """Write updated metadata back into the .docx ZIP container."""
-        if not os.path.exists(file_path) or not file_path.lower().endswith('.docx'):
-            return False
-
-        temp_dir = tempfile.mkdtemp()
-        temp_docx = os.path.join(temp_dir, 'modified.docx')
-
+    def write_metadata(file_path, new_meta, sync_fs_time=True):
+        """Atomically replace the package; leave the original intact on failure."""
+        file_path = os.path.abspath(os.fspath(file_path))
+        temp_path = None
         try:
-            with zipfile.ZipFile(file_path, 'r') as zin, zipfile.ZipFile(temp_docx, 'w') as zout:
-                for item in zin.infolist():
-                    content = zin.read(item.filename)
-
-                    if item.filename == 'docProps/core.xml':
-                        content = WordMetadataEngine._update_core_xml(content, new_meta)
-                    elif item.filename == 'docProps/app.xml':
-                        content = WordMetadataEngine._update_app_xml(content, new_meta)
-
-                    zout.writestr(item, content)
-
-            # Replace original file safely
-            shutil.move(temp_docx, file_path)
-            shutil.rmtree(temp_dir, ignore_errors=True)
-
-            # Sync file system time if requested
+            new_meta = dict(new_meta)
+            for key in ('created_time', 'modified_time'):
+                if new_meta.get(key):
+                    new_meta[key] = format_ooxml_datetime(new_meta[key])
+            for key in ('total_editing_time', 'revision'):
+                if key in new_meta and int(new_meta[key]) < 0:
+                    raise ValueError(f'{key} must be nonnegative')
+            with zipfile.ZipFile(file_path, 'r') as zin:
+                types, rels, paths = OfficeMetadataEngine._inspect_package(zin, file_path)
+                updates = {}
+                manifests_changed = False
+                for kind, fields, updater in (
+                    ('core', CORE_FIELDS, OfficeMetadataEngine._update_core_xml),
+                    ('app', {'total_editing_time', 'company'}, OfficeMetadataEngine._update_app_xml),
+                ):
+                    if not any(key in new_meta for key in fields):
+                        continue
+                    path = paths[kind]
+                    _, ns, root_tag, rel_type, content_type = PROPERTY_PARTS[kind]
+                    xml = zin.read(path) if path in zin.namelist() else ET.tostring(ET.Element(f'{{{ns}}}{root_tag}'))
+                    updates[path] = updater(xml, new_meta)
+                    if not any(node.get('PartName') == '/' + path for node in types):
+                        ET.SubElement(types, f'{{{NAMESPACES["ct"]}}}Override',
+                                      PartName='/' + path, ContentType=content_type)
+                        manifests_changed = True
+                    if not any(node.get('Type') == rel_type for node in rels):
+                        used_ids = {node.get('Id') for node in rels}
+                        index = 1
+                        while f'rId{index}' in used_ids:
+                            index += 1
+                        ET.SubElement(rels, f'{{{NAMESPACES["rel"]}}}Relationship',
+                                      Id=f'rId{index}', Type=rel_type, Target=path)
+                        manifests_changed = True
+                if manifests_changed:
+                    updates['[Content_Types].xml'] = ET.tostring(types, encoding='utf-8', xml_declaration=True)
+                    updates['_rels/.rels'] = ET.tostring(rels, encoding='utf-8', xml_declaration=True)
+                if not updates:
+                    return True
+                fd, temp_path = tempfile.mkstemp(prefix='.office_metadata_', suffix='.tmp', dir=os.path.dirname(file_path))
+                os.close(fd)
+                with zipfile.ZipFile(temp_path, 'w') as zout:
+                    zout.comment = zin.comment
+                    for item in zin.infolist():
+                        content = updates.pop(item.filename) if item.filename in updates else zin.read(item)
+                        zout.writestr(item, content)
+                    for path, content in updates.items():
+                        zout.writestr(path, content, compress_type=zipfile.ZIP_DEFLATED)
+            # Windows scanners/indexers can briefly hold a newly created file.
+            for attempt in range(4):
+                try:
+                    os.replace(temp_path, file_path)
+                    break
+                except OSError as exc:
+                    if getattr(exc, 'winerror', None) not in (5, 32, 33) or attempt == 3:
+                        raise
+                    time.sleep(0.05 * (attempt + 1))
             if sync_fs_time:
-                created_dt = None
-                modified_dt = None
-
-                if new_meta.get('created_time'):
-                    try:
-                        clean_time = new_meta['created_time'].replace('Z', '+00:00')
-                        created_dt = datetime.fromisoformat(clean_time)
-                    except Exception:
-                        pass
-                if new_meta.get('modified_time'):
-                    try:
-                        clean_time = new_meta['modified_time'].replace('Z', '+00:00')
-                        modified_dt = datetime.fromisoformat(clean_time)
-                    except Exception:
-                        pass
-
-                if created_dt or modified_dt:
-                    set_windows_file_times(file_path, created_time=created_dt, modified_time=modified_dt)
-
+                times = {key: datetime.fromisoformat(new_meta[key].replace('Z', '+00:00'))
+                         for key in ('created_time', 'modified_time') if new_meta.get(key)}
+                if times and not set_windows_file_times(file_path, times.get('created_time'), times.get('modified_time')):
+                    print('Metadata saved, but file system timestamps could not be synchronized.')
             return True
-
-        except Exception as e:
-            print(f"Error writing docx metadata: {e}")
-            if os.path.exists(temp_dir):
-                shutil.rmtree(temp_dir, ignore_errors=True)
+        except (OSError, KeyError, ET.ParseError, zipfile.BadZipFile, RuntimeError, ValueError, TypeError) as exc:
+            print(f'Error writing Office metadata: {exc}')
             return False
+        finally:
+            if temp_path and os.path.exists(temp_path):
+                os.remove(temp_path)
 
     @staticmethod
-    def _update_core_xml(xml_bytes: bytes, new_meta: dict) -> bytes:
-        """Helper to modify core.xml tree."""
+    def _update_core_xml(xml_bytes, new_meta):
         root = ET.fromstring(xml_bytes)
-
-        def set_or_create(tag_with_ns, value, attrib=None):
-            prefix, tag_name = tag_with_ns.split(':')
-            ns_uri = NAMESPACES[prefix]
-            elem = root.find(f'{prefix}:{tag_name}', NAMESPACES)
+        for key, tag in CORE_FIELDS.items():
+            if key not in new_meta or new_meta[key] is None:
+                continue
+            if key in ('created_time', 'modified_time') and not new_meta[key]:
+                continue
+            elem = root.find(tag, NAMESPACES)
             if elem is None:
-                elem = ET.SubElement(root, f'{{{ns_uri}}}{tag_name}')
-                if attrib:
-                    elem.attrib.update(attrib)
-            if value is not None:
-                elem.text = str(value)
-
-        if 'author' in new_meta:
-            set_or_create('dc:creator', new_meta['author'])
-        if 'last_modified_by' in new_meta:
-            set_or_create('cp:lastModifiedBy', new_meta['last_modified_by'])
-        if 'created_time' in new_meta and new_meta['created_time']:
-            set_or_create('dcterms:created', new_meta['created_time'], {'{http://www.w3.org/2001/XMLSchema-instance}type': 'dcterms:W3CDTF'})
-        if 'modified_time' in new_meta and new_meta['modified_time']:
-            set_or_create('dcterms:modified', new_meta['modified_time'], {'{http://www.w3.org/2001/XMLSchema-instance}type': 'dcterms:W3CDTF'})
-        if 'revision' in new_meta:
-            set_or_create('cp:revision', new_meta['revision'])
-        if 'title' in new_meta:
-            set_or_create('dc:title', new_meta['title'])
-        if 'subject' in new_meta:
-            set_or_create('dc:subject', new_meta['subject'])
-        if 'comments' in new_meta:
-            set_or_create('dc:description', new_meta['comments'])
-
+                prefix, name = tag.split(':')
+                elem = ET.SubElement(root, f'{{{NAMESPACES[prefix]}}}{name}')
+            if key in ('created_time', 'modified_time'):
+                elem.set(f'{{{NAMESPACES["xsi"]}}}type', 'dcterms:W3CDTF')
+            elem.text = str(new_meta[key])
         return ET.tostring(root, encoding='utf-8', xml_declaration=True)
 
     @staticmethod
-    def _update_app_xml(xml_bytes: bytes, new_meta: dict) -> bytes:
-        """Helper to modify app.xml tree."""
+    def _update_app_xml(xml_bytes, new_meta):
         root = ET.fromstring(xml_bytes)
-        ep_ns = NAMESPACES['ep']
-
-        if 'total_editing_time' in new_meta:
-            elem = root.find('ep:TotalTime', NAMESPACES)
-            if elem is None:
-                for child in root:
-                    if child.tag.endswith('TotalTime'):
-                        elem = child
-                        break
-            if elem is None:
-                elem = ET.SubElement(root, f'{{{ep_ns}}}TotalTime')
-            elem.text = str(new_meta['total_editing_time'])
-
-        if 'company' in new_meta:
-            elem = root.find('ep:Company', NAMESPACES)
-            if elem is None:
-                for child in root:
-                    if child.tag.endswith('Company'):
-                        elem = child
-                        break
-            if elem is None:
-                elem = ET.SubElement(root, f'{{{ep_ns}}}Company')
-            elem.text = str(new_meta['company'])
-
+        for key in ('total_editing_time', 'company'):
+            if key in new_meta and new_meta[key] is not None:
+                elem = root.find(APP_FIELDS[key], NAMESPACES)
+                if elem is None:
+                    elem = ET.SubElement(root, f'{{{NAMESPACES["ep"]}}}{APP_FIELDS[key].split(":")[1]}')
+                elem.text = str(new_meta[key])
         return ET.tostring(root, encoding='utf-8', xml_declaration=True)
+
+
+# Keep existing scripts and integrations working.
+WordMetadataEngine = OfficeMetadataEngine

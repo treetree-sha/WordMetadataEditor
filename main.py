@@ -7,7 +7,7 @@ from PySide6.QtWidgets import QApplication
 
 from qfluentwidgets import (
     FluentWindow, NavigationItemPosition, FluentIcon, setTheme, Theme,
-    setThemeColor, isDarkTheme
+    setThemeColor, isDarkTheme, InfoBar, InfoBarPosition
 )
 
 from ui.single_file_interface import SingleFileInterface
@@ -104,7 +104,7 @@ class MainWindow(FluentWindow):
 
     def retranslate_ui(self):
         self.setWindowTitle(
-            i18n.t("Word 文档属性高级编辑器 (Word Metadata Editor)", "Word Metadata Editor")
+            i18n.t("Office 文档属性高级编辑器", "Office Metadata Editor")
         )
         if hasattr(self, 'item_single') and self.item_single:
             self.item_single.setText(i18n.t('单文件属性精修', 'Single File Editor'))
@@ -112,6 +112,18 @@ class MainWindow(FluentWindow):
             self.item_batch.setText(i18n.t('批量处理与脱敏', 'Batch Processing'))
         if hasattr(self, 'item_settings') and self.item_settings:
             self.item_settings.setText(i18n.t('设置与关于', 'Settings & About'))
+
+    def closeEvent(self, event):
+        worker = getattr(self.batch_interface, 'thread', None)
+        if worker is not None and worker.isRunning():
+            InfoBar.warning(
+                title=i18n.t('正在批量处理', 'Batch Processing in Progress'),
+                content=i18n.t('请等待当前批量处理完成后再关闭窗口。', 'Please wait for the current batch to finish before closing.'),
+                position=InfoBarPosition.TOP, duration=3000, parent=self
+            )
+            event.ignore()
+            return
+        super().closeEvent(event)
 
 
 if __name__ == '__main__':

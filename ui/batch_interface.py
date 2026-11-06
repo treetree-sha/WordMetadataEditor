@@ -3,7 +3,8 @@ import random
 from datetime import datetime
 from PySide6.QtCore import Qt, QThread, Signal, QDateTime
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QFileDialog, QHeaderView, QTableWidgetItem
+    QWidget, QVBoxLayout, QHBoxLayout, QFileDialog, QHeaderView, QTableWidgetItem,
+    QAbstractItemView
 )
 
 from qfluentwidgets import (
@@ -13,7 +14,8 @@ from qfluentwidgets import (
     StrongBodyLabel, DateTimeEdit
 )
 
-from metadata_engine import WordMetadataEngine
+from metadata_engine import OfficeMetadataEngine, MetadataError, is_supported_file, format_ooxml_datetime
+from ui.file_filters import office_file_filter
 from ui.i18n import i18n
 
 
@@ -24,7 +26,7 @@ class BatchWorkerThread(QThread):
 
     def __init__(self, file_list, batch_config, sync_fs_time=True):
         super().__init__()
-        self.file_list = file_list
+        self.file_list = list(file_list)
         self.batch_config = batch_config
         self.sync_fs_time = sync_fs_time
 
@@ -40,7 +42,7 @@ class BatchWorkerThread(QThread):
                 continue
 
             try:
-                meta = WordMetadataEngine.read_metadata(file_path)
+                meta = {}
 
                 if self.batch_config.get('anonymize'):
                     meta['author'] = ''
@@ -48,7 +50,7 @@ class BatchWorkerThread(QThread):
                     meta['company'] = ''
                     meta['comments'] = ''
                     meta['total_editing_time'] = '0'
-                    meta['created'] = ''
+                    meta['revision'] = '1'
                 else:
                     if self.batch_config.get('set_author'):
                         meta['author'] = self.batch_config['author']
@@ -76,12 +78,12 @@ class BatchWorkerThread(QThread):
                         low_ts, high_ts = min(start_ts, end_ts), max(start_ts, end_ts)
                         rand_ts = random.randint(low_ts, high_ts)
                         rand_dt = datetime.fromtimestamp(rand_ts)
-                        meta['created'] = rand_dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+                        meta['created_time'] = format_ooxml_datetime(rand_dt)
                     elif self.batch_config.get('set_created_time'):
                         dt_val = self.batch_config['created_time']
-                        meta['created'] = dt_val.strftime('%Y-%m-%dT%H:%M:%SZ')
+                        meta['created_time'] = format_ooxml_datetime(dt_val)
 
-                ok = WordMetadataEngine.write_metadata(file_path, meta, sync_fs_time=self.sync_fs_time)
+                ok = OfficeMetadataEngine.write_metadata(file_path, meta, sync_fs_time=self.sync_fs_time)
                 if ok:
                     success_count += 1
                 else:
@@ -98,11 +100,13 @@ class BatchWorkerThread(QThread):
 
 
 class BatchInterface(ScrollArea):
-    """Batch Processing Interface for Word Documents."""
+    """Batch processing for mixed Office files."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.file_paths = []
+        self.file_statuses = {}
+        self._batch_running = False
 
         self.scroll_widget = QWidget()
         self.scroll_widget.setObjectName("batchScrollWidget")
@@ -123,13 +127,14 @@ class BatchInterface(ScrollArea):
         self.title_label = TitleLabel(i18n.t("批量文件属性修改", "Batch Document Metadata Editor"), self)
         self.subtitle_label = CaptionLabel(
             i18n.t(
-                "批量导入 Word 文档，一键统一修改作者、编辑时间、创建时间或进行脱敏处理",
-                "Batch import Word documents to unify author, editing time, creation time, or anonymize in bulk"
+                "混合导入 Word / Excel / PowerPoint，统一修改文件属性或批量脱敏",
+                "Batch edit metadata or anonymize mixed Word / Excel / PowerPoint files"
             ),
             self
         )
         self.main_layout.addWidget(self.title_label)
         self.main_layout.addWidget(self.subtitle_label)
+        self.subtitle_label.setWordWrap(True)
 
         # 2. File Import Action Bar Card
         bar_card = CardWidget(self)
@@ -158,6 +163,8 @@ class BatchInterface(ScrollArea):
         # 3. File Table
         self.table = TableWidget(self)
         self.table.setColumnCount(6)
+        self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.table.setSortingEnabled(False)
         self._set_table_headers()
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
@@ -167,6 +174,7 @@ class BatchInterface(ScrollArea):
 
         # 4. Batch Operations Config Card
         config_card = CardWidget(self)
+        self.config_card = config_card
         cfg_layout = QVBoxLayout(config_card)
         cfg_layout.setContentsMargins(24, 20, 24, 20)
         cfg_layout.setSpacing(12)
@@ -307,19 +315,19 @@ class BatchInterface(ScrollArea):
         self.main_layout.addWidget(exec_card)
 
     def _on_fixed_time_checked(self, state):
-        if state == Qt.Checked and self.chk_random_time.isChecked():
+        if state == Qt.CheckState.Checked.value and self.chk_random_time.isChecked():
             self.chk_random_time.setChecked(False)
 
     def _on_random_time_checked(self, state):
-        if state == Qt.Checked and self.chk_total_time.isChecked():
+        if state == Qt.CheckState.Checked.value and self.chk_total_time.isChecked():
             self.chk_total_time.setChecked(False)
 
     def _on_fixed_created_time_checked(self, state):
-        if state == Qt.Checked and self.chk_random_created_time.isChecked():
+        if state == Qt.CheckState.Checked.value and self.chk_random_created_time.isChecked():
             self.chk_random_created_time.setChecked(False)
 
     def _on_random_created_time_checked(self, state):
-        if state == Qt.Checked and self.chk_created_time.isChecked():
+        if state == Qt.CheckState.Checked.value and self.chk_created_time.isChecked():
             self.chk_created_time.setChecked(False)
 
     def _set_table_headers(self):
@@ -336,8 +344,8 @@ class BatchInterface(ScrollArea):
         self.title_label.setText(i18n.t("批量文件属性修改", "Batch Document Metadata Editor"))
         self.subtitle_label.setText(
             i18n.t(
-                "批量导入 Word 文档，一键统一修改作者、编辑时间、创建时间或进行脱敏处理",
-                "Batch import Word documents to unify author, editing time, creation time, or anonymize in bulk"
+                "混合导入 Word / Excel / PowerPoint，统一修改文件属性或批量脱敏",
+                "Batch edit metadata or anonymize mixed Word / Excel / PowerPoint files"
             )
         )
         self.btn_add_files.setText(i18n.t("添加文件...", "Add Files..."))
@@ -380,32 +388,42 @@ class BatchInterface(ScrollArea):
     def _add_files(self):
         files, _ = QFileDialog.getOpenFileNames(
             self,
-            i18n.t("选择 Word 文档", "Select Word Documents"),
+            i18n.t("选择 Office 文件", "Select Office Files"),
             "",
-            i18n.t("Word 文档 (*.docx)", "Word Documents (*.docx)")
+            office_file_filter()
         )
         if files:
-            for f in files:
-                if f not in self.file_paths:
-                    self.file_paths.append(f)
+            self._add_paths(files)
             self._update_table()
+
+    def _add_paths(self, files):
+        if self._batch_running:
+            return
+        known = {os.path.normcase(os.path.abspath(path)) for path in self.file_paths}
+        for path in files:
+            path = os.path.abspath(path)
+            key = os.path.normcase(path)
+            if is_supported_file(path) and os.path.isfile(path) and key not in known:
+                self.file_paths.append(path)
+                known.add(key)
 
     def _add_folder(self):
         folder = QFileDialog.getExistingDirectory(self, i18n.t("选择文件夹", "Select Folder"))
         if folder:
-            added_any = False
+            candidates = []
             for root, _, files in os.walk(folder):
                 for filename in files:
-                    if filename.lower().endswith('.docx') and not filename.startswith('~$'):
+                    if is_supported_file(filename):
                         full_path = os.path.join(root, filename)
-                        if full_path not in self.file_paths:
-                            self.file_paths.append(full_path)
-                            added_any = True
-            if added_any:
-                self._update_table()
+                        candidates.append(full_path)
+            self._add_paths(candidates)
+            self._update_table()
 
     def _clear_list(self):
+        if self._batch_running:
+            return
         self.file_paths.clear()
+        self.file_statuses.clear()
         self._update_table()
 
     def _update_table(self):
@@ -414,20 +432,41 @@ class BatchInterface(ScrollArea):
 
         for i, file_path in enumerate(self.file_paths):
             filename = os.path.basename(file_path)
-            meta = WordMetadataEngine.read_metadata(file_path)
+            error = ''
+            try:
+                meta = OfficeMetadataEngine.read_metadata(file_path)
+            except MetadataError as exc:
+                meta = {}
+                error = str(exc)
 
             self.table.setItem(i, 0, QTableWidgetItem(filename))
             self.table.setItem(i, 1, QTableWidgetItem(meta.get('author', '')))
             self.table.setItem(i, 2, QTableWidgetItem(meta.get('last_modified_by', '')))
             self.table.setItem(i, 3, QTableWidgetItem(meta.get('total_editing_time', '0')))
             self.table.setItem(i, 4, QTableWidgetItem(file_path))
-            self.table.setItem(i, 5, QTableWidgetItem(i18n.t("待处理", "Pending")))
+            status = self.file_statuses.get(file_path)
+            status_text = i18n.t("待处理", "Pending")
+            if error or status is False:
+                status_text = i18n.t("失败", "Failed")
+            elif status is True:
+                status_text = i18n.t("成功", "Success")
+            item = QTableWidgetItem(status_text)
+            item.setToolTip(error)
+            self.table.setItem(i, 5, item)
+
+    def _set_busy(self, busy):
+        self._batch_running = busy
+        for widget in (self.btn_run_batch, self.btn_add_files, self.btn_add_folder,
+                       self.btn_clear_list, self.config_card):
+            widget.setEnabled(not busy)
 
     def _run_batch_process(self):
+        if self._batch_running:
+            return
         if not self.file_paths:
             InfoBar.warning(
                 title=i18n.t("提示", "Notice"),
-                content=i18n.t("请先添加需要修改的 Word 文档", "Please add Word documents to modify first"),
+                content=i18n.t("请先添加需要修改的 Office 文件", "Please add Office files to modify first"),
                 orient=Qt.Horizontal,
                 position=InfoBarPosition.TOP,
                 duration=3000,
@@ -475,7 +514,9 @@ class BatchInterface(ScrollArea):
             )
             return
 
-        self.btn_run_batch.setEnabled(False)
+        self.file_statuses.clear()
+        self._update_table()
+        self._set_busy(True)
         self.progress_bar.setValue(0)
         self.progress_bar.show()
 
@@ -488,15 +529,17 @@ class BatchInterface(ScrollArea):
         pct = int((current / total) * 100)
         self.progress_bar.setValue(pct)
         item_index = current - 1
+        self.file_statuses[self.file_paths[item_index]] = success
         status_text = i18n.t("成功", "Success") if success else i18n.t("失败", "Failed")
         self.table.setItem(item_index, 5, QTableWidgetItem(status_text))
 
     def _on_finished(self, success_count, fail_count):
-        self.btn_run_batch.setEnabled(True)
+        self._set_busy(False)
         self.progress_bar.hide()
         self._update_table()
 
-        InfoBar.success(
+        show_result = InfoBar.warning if fail_count else InfoBar.success
+        show_result(
             title=i18n.t("批量处理完成", "Batch Processing Complete"),
             content=i18n.t(f"已成功处理 {success_count} 个文件，失败 {fail_count} 个。", f"Successfully processed {success_count} files, failed {fail_count}."),
             orient=Qt.Horizontal,

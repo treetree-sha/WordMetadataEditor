@@ -13,12 +13,13 @@ from qfluentwidgets import (
     StrongBodyLabel
 )
 
-from metadata_engine import WordMetadataEngine
+from metadata_engine import OfficeMetadataEngine, MetadataError, is_supported_file, format_ooxml_datetime
+from ui.file_filters import office_file_filter
 from ui.i18n import i18n
 
 
 class DragDropCard(CardWidget):
-    """Card widget that supports Drag & Drop for .docx files."""
+    """Card widget that accepts supported Office files."""
 
     def __init__(self, parent=None, on_file_dropped=None):
         super().__init__(parent)
@@ -29,20 +30,20 @@ class DragDropCard(CardWidget):
     def dragEnterEvent(self, event: QDragEnterEvent):
         if event.mimeData().hasUrls():
             urls = event.mimeData().urls()
-            if any(url.toLocalFile().lower().endswith('.docx') for url in urls):
+            if any(is_supported_file(url.toLocalFile()) and os.path.isfile(url.toLocalFile()) for url in urls):
                 event.acceptProposedAction()
 
     def dropEvent(self, event: QDropEvent):
         for url in event.mimeData().urls():
             file_path = url.toLocalFile()
-            if file_path.lower().endswith('.docx'):
+            if is_supported_file(file_path) and os.path.isfile(file_path):
                 if self.on_file_dropped:
                     self.on_file_dropped(file_path)
                 break
 
 
 class SingleFileInterface(ScrollArea):
-    """Single Word Document Metadata Editor Interface."""
+    """Single Office file metadata editor."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -68,13 +69,14 @@ class SingleFileInterface(ScrollArea):
         self.title_label = TitleLabel(i18n.t("单文件属性精细编辑", "Single File Fine Metadata Editing"), self)
         self.subtitle_label = CaptionLabel(
             i18n.t(
-                "修改 Word (.docx) 文档内部元数据（作者、创建时间、总编辑时间）及操作系统文件记录",
-                "Modify Word (.docx) metadata (author, created time, total editing time) & OS file attributes"
+                "修改 Word / Excel / PowerPoint 的作者、备注、时间戳等文件属性",
+                "Edit Word / Excel / PowerPoint metadata and file timestamps"
             ),
             self
         )
         self.main_layout.addWidget(self.title_label)
         self.main_layout.addWidget(self.subtitle_label)
+        self.subtitle_label.setWordWrap(True)
 
         # 2. File Selection Drop Zone Card
         self.drop_card = DragDropCard(self, on_file_dropped=self.load_file)
@@ -86,10 +88,12 @@ class SingleFileInterface(ScrollArea):
 
         file_info_vbox = QVBoxLayout()
         self.file_name_label = StrongBodyLabel(
-            i18n.t("点击选择 Word 文档 (.docx) 或将文件拖拽至此处", "Click to select Word document (.docx) or drag and drop file here"),
+            i18n.t("选择 Word / Excel / PowerPoint 文件，或将文件拖拽至此处", "Select a Word / Excel / PowerPoint file, or drop it here"),
             self.drop_card
         )
         self.file_path_label = CaptionLabel(i18n.t("尚未选择文件", "No file selected"), self.drop_card)
+        self.file_name_label.setWordWrap(True)
+        self.file_path_label.setWordWrap(True)
         file_info_vbox.addWidget(self.file_name_label)
         file_info_vbox.addWidget(self.file_path_label)
 
@@ -220,7 +224,8 @@ class SingleFileInterface(ScrollArea):
         self.total_time_spin.setRange(0, 999999)
         self.total_time_spin.setSingleStep(30)
         tr2_v1.addWidget(self.total_time_spin)
-        self.total_time_hint = CaptionLabel(i18n.t("提示: 60 分钟 = 1 小时", "Note: 60 mins = 1 hour"), time_card)
+        self.total_time_hint = CaptionLabel(i18n.t("提示: 60 分钟 = 1 小时；Excel 可能不显示此属性", "60 mins = 1 hour; Excel may not display this property"), time_card)
+        self.total_time_hint.setWordWrap(True)
         tr2_v1.addWidget(self.total_time_hint)
 
         tr2_v2 = QVBoxLayout()
@@ -229,7 +234,8 @@ class SingleFileInterface(ScrollArea):
         self.revision_spin = SpinBox(time_card)
         self.revision_spin.setRange(1, 99999)
         tr2_v2.addWidget(self.revision_spin)
-        self.revision_hint = CaptionLabel(i18n.t("提示: 每次 Word 保存自动增加", "Note: Auto-increments on Word save"), time_card)
+        self.revision_hint = CaptionLabel(i18n.t("提示: 属性显示及更新方式因 Office 应用而异", "Display and update behavior varies by Office application"), time_card)
+        self.revision_hint.setWordWrap(True)
         tr2_v2.addWidget(self.revision_hint)
 
         t_row2.addLayout(tr2_v1)
@@ -247,7 +253,7 @@ class SingleFileInterface(ScrollArea):
         self.sync_card_title = StrongBodyLabel(i18n.t("同步更新 Windows 操作系统文件时间记录", "Sync Windows File System Timestamps"), sync_card)
         self.sync_card_subtitle = CaptionLabel(
             i18n.t(
-                "开启后，修改 Word 内部属性的同时，也会改变 NTFS 文件系统的【创建时间】与【修改时间】",
+                "开启后，同时同步 Windows 文件系统的创建时间与修改时间",
                 "Also updates NTFS Created & Modified timestamps on the Windows file system"
             ),
             sync_card
@@ -289,12 +295,12 @@ class SingleFileInterface(ScrollArea):
         self.title_label.setText(i18n.t("单文件属性精细编辑", "Single File Fine Metadata Editing"))
         self.subtitle_label.setText(
             i18n.t(
-                "修改 Word (.docx) 文档内部元数据（作者、创建时间、总编辑时间）及操作系统文件记录",
-                "Modify Word (.docx) metadata (author, created time, total editing time) & OS file attributes"
+                "修改 Word / Excel / PowerPoint 的作者、备注、时间戳等文件属性",
+                "Edit Word / Excel / PowerPoint metadata and file timestamps"
             )
         )
         if not self.current_file_path:
-            self.file_name_label.setText(i18n.t("点击选择 Word 文档 (.docx) 或将文件拖拽至此处", "Click to select Word document (.docx) or drag and drop file here"))
+            self.file_name_label.setText(i18n.t("选择 Word / Excel / PowerPoint 文件，或将文件拖拽至此处", "Select a Word / Excel / PowerPoint file, or drop it here"))
             self.file_path_label.setText(i18n.t("尚未选择文件", "No file selected"))
         self.browse_btn.setText(i18n.t("浏览文件", "Browse File"))
 
@@ -320,14 +326,14 @@ class SingleFileInterface(ScrollArea):
         self.btn_now_modified.setText(i18n.t("设为当前", "Set Now"))
 
         self.lbl_total_time.setText(i18n.t("总编辑时间 (Total Editing Time / 分钟)", "Total Editing Time (Minutes)"))
-        self.total_time_hint.setText(i18n.t("提示: 60 分钟 = 1 小时", "Note: 60 mins = 1 hour"))
+        self.total_time_hint.setText(i18n.t("提示: 60 分钟 = 1 小时；Excel 可能不显示此属性", "60 mins = 1 hour; Excel may not display this property"))
         self.lbl_revision.setText(i18n.t("修订版本号 (Revision Number)", "Revision Number"))
-        self.revision_hint.setText(i18n.t("提示: 每次 Word 保存自动增加", "Note: Auto-increments on Word save"))
+        self.revision_hint.setText(i18n.t("提示: 属性显示及更新方式因 Office 应用而异", "Display and update behavior varies by Office application"))
 
         self.sync_card_title.setText(i18n.t("同步更新 Windows 操作系统文件时间记录", "Sync Windows File System Timestamps"))
         self.sync_card_subtitle.setText(
             i18n.t(
-                "开启后，修改 Word 内部属性的同时，也会改变 NTFS 文件系统的【创建时间】与【修改时间】",
+                "开启后，同时同步 Windows 文件系统的创建时间与修改时间",
                 "Also updates NTFS Created & Modified timestamps on the Windows file system"
             )
         )
@@ -339,15 +345,28 @@ class SingleFileInterface(ScrollArea):
     def _select_file(self):
         file_path, _ = QFileDialog.getOpenFileName(
             self,
-            i18n.t("选择 Word 文档", "Select Word Document"),
+            i18n.t("选择 Office 文件", "Select Office File"),
             "",
-            i18n.t("Word 文档 (*.docx)", "Word Document (*.docx)")
+            office_file_filter()
         )
         if file_path:
             self.load_file(file_path)
 
     def load_file(self, file_path: str):
-        if not file_path or not os.path.exists(file_path):
+        if not file_path:
+            return
+
+        try:
+            meta = OfficeMetadataEngine.read_metadata(file_path)
+        except MetadataError:
+            InfoBar.error(
+                title=i18n.t("无法加载文件", "Unable to Load File"),
+                content=i18n.t(
+                    "请选择有效的 .docx / .docm / .xlsx / .xlsm / .pptx / .pptm 文件；不支持旧版或加密文件。",
+                    "Select a valid .docx / .docm / .xlsx / .xlsm / .pptx / .pptm file. Legacy and encrypted files are unsupported."
+                ),
+                position=InfoBarPosition.TOP, duration=5000, parent=self
+            )
             return
 
         self.current_file_path = file_path
@@ -355,7 +374,6 @@ class SingleFileInterface(ScrollArea):
         self.file_path_label.setText(file_path)
 
         # Load metadata
-        meta = WordMetadataEngine.read_metadata(file_path)
         self.current_meta = meta
 
         self.author_input.setText(meta.get('author', ''))
@@ -367,12 +385,12 @@ class SingleFileInterface(ScrollArea):
         # Time formatting
         c_time = meta.get('created_time', '')
         if c_time:
-            c_time = c_time.replace('T', ' ').replace('Z', '')
+            c_time = self._display_time(c_time)
         self.created_time_input.setText(c_time)
 
         m_time = meta.get('modified_time', '')
         if m_time:
-            m_time = m_time.replace('T', ' ').replace('Z', '')
+            m_time = self._display_time(m_time)
         self.modified_time_input.setText(m_time)
 
         try:
@@ -397,6 +415,13 @@ class SingleFileInterface(ScrollArea):
             parent=self
         )
 
+    @staticmethod
+    def _display_time(value):
+        try:
+            return datetime.fromisoformat(value.replace('Z', '+00:00')).astimezone().strftime('%Y-%m-%d %H:%M:%S')
+        except ValueError:
+            return value
+
     def _save_metadata(self):
         if not self.current_file_path:
             return
@@ -412,24 +437,22 @@ class SingleFileInterface(ScrollArea):
             'revision': str(self.revision_spin.value())
         }
 
-        # Format ISO timestamp
-        c_str = self.created_time_input.text().strip()
-        if c_str:
-            if 'T' not in c_str:
-                c_str = c_str.replace(' ', 'T')
-            if not c_str.endswith('Z'):
-                c_str += 'Z'
-            new_meta['created_time'] = c_str
+        try:
+            for key, widget in (('created_time', self.created_time_input), ('modified_time', self.modified_time_input)):
+                value = widget.text().strip()
+                if value:
+                    original = self.current_meta.get(key, '')
+                    # Preserve the original instant/precision when the display is unchanged.
+                    new_meta[key] = original if original and value == self._display_time(original) else format_ooxml_datetime(value)
+        except ValueError:
+            InfoBar.error(
+                title=i18n.t("时间格式无效", "Invalid Timestamp"),
+                content=i18n.t("请输入有效的本地时间：YYYY-MM-DD HH:MM:SS。", "Enter a valid local time: YYYY-MM-DD HH:MM:SS."),
+                position=InfoBarPosition.TOP, duration=4000, parent=self
+            )
+            return False
 
-        m_str = self.modified_time_input.text().strip()
-        if m_str:
-            if 'T' not in m_str:
-                m_str = m_str.replace(' ', 'T')
-            if not m_str.endswith('Z'):
-                m_str += 'Z'
-            new_meta['modified_time'] = m_str
-
-        success = WordMetadataEngine.write_metadata(
+        success = OfficeMetadataEngine.write_metadata(
             self.current_file_path,
             new_meta,
             sync_fs_time=self.sync_switch.isChecked()
@@ -438,7 +461,7 @@ class SingleFileInterface(ScrollArea):
         if success:
             InfoBar.success(
                 title=i18n.t("保存成功", "Saved Successfully"),
-                content=i18n.t("Word 文档属性及系统时间已成功更新！", "Word metadata and OS timestamps updated successfully!"),
+                content=i18n.t("Office 文件属性已成功保存。", "Office metadata saved successfully."),
                 orient=Qt.Horizontal,
                 isClosable=True,
                 position=InfoBarPosition.TOP,
@@ -450,13 +473,14 @@ class SingleFileInterface(ScrollArea):
         else:
             InfoBar.error(
                 title=i18n.t("保存失败", "Save Failed"),
-                content=i18n.t("更新文档属性时发生错误，请检查文件是否被 Word 独占打开。", "Error updating metadata. Please check if the file is locked by Word."),
+                content=i18n.t("更新属性失败，请检查文件是否被 Office 占用、是否损坏或没有写入权限。", "Could not update metadata. Check for Office locks, file corruption or write permissions."),
                 orient=Qt.Horizontal,
                 isClosable=True,
                 position=InfoBarPosition.TOP,
                 duration=5000,
                 parent=self
             )
+        return success
 
     def _anonymize_metadata(self):
         if not self.current_file_path:
@@ -469,7 +493,8 @@ class SingleFileInterface(ScrollArea):
         self.total_time_spin.setValue(0)
         self.revision_spin.setValue(1)
 
-        self._save_metadata()
+        if not self._save_metadata():
+            return
 
         InfoBar.info(
             title=i18n.t("隐私脱敏完成", "Anonymization Complete"),

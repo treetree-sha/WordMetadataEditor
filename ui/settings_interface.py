@@ -90,11 +90,11 @@ class SettingsInterface(ScrollArea):
         icon_widget.setFixedSize(48, 48)
 
         info_vbox = QVBoxLayout()
-        self.app_name_label = StrongBodyLabel(i18n.t("Word 文档属性高级修改器 v1.1.0", "Word Metadata Editor v1.1.0"), about_card)
+        self.app_name_label = StrongBodyLabel(i18n.t("Office 文档属性高级编辑器 v1.2.0", "Office Metadata Editor v1.2.0"), about_card)
         self.app_desc_label = CaptionLabel(
             i18n.t(
-                "基于 PySide6 与 Windows 11 Fluent Design 打造的高颜值 Word 元数据修改软件。",
-                "A modern, elegant Word metadata editor built with PySide6 & Windows 11 Fluent Design."
+                "支持 Word、Excel、PowerPoint 的 Office 文件属性编辑器。",
+                "An Office metadata editor for Word, Excel and PowerPoint."
             ),
             about_card
         )
@@ -151,11 +151,11 @@ class SettingsInterface(ScrollArea):
         self.radio_dark.setText(i18n.t("暗黑模式 (Dark Mode)", "Dark Mode"))
         self.radio_light.setText(i18n.t("浅色模式 (Light Mode)", "Light Mode"))
         self.lang_card_title.setText(i18n.t("界面语言 (Language)", "Language Settings"))
-        self.app_name_label.setText(i18n.t("Word 文档属性高级修改器 v1.1.0", "Word Metadata Editor v1.1.0"))
+        self.app_name_label.setText(i18n.t("Office 文档属性高级编辑器 v1.2.0", "Office Metadata Editor v1.2.0"))
         self.app_desc_label.setText(
             i18n.t(
-                "基于 PySide6 与 Windows 11 Fluent Design 打造的高颜值 Word 元数据修改软件。",
-                "A modern, elegant Word metadata editor built with PySide6 & Windows 11 Fluent Design."
+                "支持 Word、Excel、PowerPoint 的 Office 文件属性编辑器。",
+                "An Office metadata editor for Word, Excel and PowerPoint."
             )
         )
         self.app_feature_label.setText(

@@ -1,1 +1,1 @@
-# UI package for Word Metadata Editor
+# UI package for Office Metadata Editor

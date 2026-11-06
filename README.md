@@ -1,4 +1,4 @@
-# Word 文档属性高级编辑器 (Word Metadata Editor)
+# Office 文档属性高级编辑器 (Office Metadata Editor)
 
 <p align="center">
   <a href="README.md"><img src="https://img.shields.io/badge/Language-简体中文-blue?style=for-the-badge&logo=china" alt="简体中文"></a>
@@ -6,18 +6,38 @@
 </p>
 
 <p align="center">
-  <img src="assets/app_icon.png" width="128" height="128" alt="Word Metadata Editor Icon">
+  <img src="assets/app_icon.png" width="128" height="128" alt="Office Metadata Editor Icon">
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Release-v1.1.0-blue?style=flat-square&logo=github" alt="Release">
+  <img src="https://img.shields.io/badge/Release-v1.2.0-blue?style=flat-square&logo=github" alt="Release">
   <img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/Style-Win11%20Fluent%20Design-0078D4?style=flat-square&logo=windows11" alt="Style">
   <img src="https://img.shields.io/badge/Python-3.9%2B-blue?style=flat-square&logo=python" alt="Python">
   <img src="https://img.shields.io/badge/GUI-PySide6%20%2B%20FluentWidgets-purple?style=flat-square" alt="GUI">
 </p>
 
-一套基于 **PySide6** 与 **Windows 11 Fluent Design** 打造的高颜值 Word (`.docx`) 文档元数据及文件系统属性高级修改软件。
+一套基于 **PySide6** 与 **Windows 11 Fluent Design** 打造的 Office 文件元数据及文件系统属性编辑软件，支持 Microsoft Word、Excel 和 PowerPoint。
+
+---
+
+## v1.2.0：Excel 与 PowerPoint 支持
+
+| 文件类型 | 支持格式 |
+| --- | --- |
+| Word 文档 | `.docx`、`.docm` |
+| Excel 工作簿 | `.xlsx`、`.xlsm` |
+| PowerPoint 演示文稿 | `.pptx`、`.pptm` |
+
+- **单文件编辑**：浏览、拖拽、查看及修改作者、最后修改者、标题、备注、公司、创建/修改时间、总编辑时间与修订号。
+- **混合批量处理**：三类文件可加入同一任务，支持递归扫描文件夹、统一属性、随机时间范围和属性脱敏，自动跳过 `~$` 临时文件。
+- **内容保留**：仅更新文件属性；工作表、公式、图表、幻灯片、图片与 VBA 二进制内容按原始字节复制。缺失的属性文件会补建并注册到包中。
+- **保存与结果反馈**：同目录临时文件及原子替换；损坏或格式不匹配的文件报告失败，批量任务结束后保留每个文件的处理结果。
+- **时间修复**：修复批量创建时间未生效；界面使用本地时间，文件属性存为 UTC；修复 64 位 Windows 文件时间同步。
+
+范围：本工具修改的是整个文件的属性，不编辑单元格或幻灯片正文。旧版 `.doc` / `.xls` / `.ppt`、`.xlsb` 和加密文件不在支持范围内。总编辑时间等属性在不同 Office 应用中的显示及保留方式可能不同；Excel 可能不显示该字段。Microsoft 的 [Excel 内置文档属性说明](https://learn.microsoft.com/en-us/office/vba/api/excel.workbook.builtindocumentproperties) 也指出，并非每个内置属性都有已定义的值。脱敏处理清理此工具列出的属性，不清理正文、批注、修订记录或自定义属性。
+
+v1.2.0 提供 Windows x64 绿色单文件 EXE 与 ZIP，下载入口见下方；发行版附件同时提供 SHA-256 校验文件。历史版本继续保留。
 
 ---
 
@@ -35,14 +55,18 @@
 
 无需安装 Python 或配置任何依赖环境，直接下载 Windows 独立单文件版：
 
-👉 **[点击前往 GitHub Releases 下载绿色单文件版 (v1.1.0)](https://github.com/treetree-sha/WordMetadataEditor/releases)**
+👉 **[查看 v1.2.0 发行版](https://github.com/treetree-sha/WordMetadataEditor/releases/tag/v1.2.0)**
+
+- [下载 EXE 单文件版](https://github.com/treetree-sha/WordMetadataEditor/releases/download/v1.2.0/OfficeMetadataEditor_v1.2.0_x64.exe)
+- [下载 ZIP（含使用说明与许可证）](https://github.com/treetree-sha/WordMetadataEditor/releases/download/v1.2.0/OfficeMetadataEditor_v1.2.0_x64.zip)
+- [下载 SHA-256 校验文件](https://github.com/treetree-sha/WordMetadataEditor/releases/download/v1.2.0/OfficeMetadataEditor_v1.2.0_x64.SHA256.txt)
 
 ---
 
 ## 🌟 核心功能特性
 
 1. **📄 单文件精细编辑 (Single File Editor)**
-   * **拖拽支持**：拖拽任意 `.docx` 文件至窗口即可自动解析并加载所有元数据。
+   * **拖拽支持**：拖拽支持的 Word、Excel 或 PowerPoint 文件至窗口即可加载文件属性。
    * **核心属性修改**：
      * **作者 (Creator)** & **最后修改者 (Last Modified By)**
      * **创建时间 (Created Time)** & **修改时间 (Modified Time)**（提供“一键设为当前时间”）
@@ -52,12 +76,12 @@
    * **一键脱敏**：快速清空作者、修改人、公司名称，并将总编辑时间归零。
 
 2. **📂 批量处理与脱敏 (Batch Processing)**
-   * 支持同时选择多个 Word 文档或扫描整个文件夹（递归子目录）。
+   * 支持混合选择多个 Word、Excel、PowerPoint 文件或扫描整个文件夹（递归子目录）。
    * 采用后台多线程处理（UI 界面顺滑不卡顿），支持实时进度条显示与表格状态更新。
    * 支持统一批量设置作者、修改人、编辑时间或一键清理隐私。
 
 3. **⏰ Windows 文件系统时间同步联动 (NTFS Sync)**
-   * 勾选“同步更新系统文件时间”后，软件在修改 `.docx` 内部 XML 的同时，通过 Win32 API 自动修改 Windows NTFS 文件系统的 **【创建时间 (ctime)】** 与 **【修改时间 (mtime)】**。
+   * 勾选“同步更新系统文件时间”后，软件在修改 Office 文件属性的同时，通过 Win32 API 自动修改 Windows NTFS 文件系统的 **【创建时间 (ctime)】** 与 **【修改时间 (mtime)】**。
 
 4. **🎨 Windows 11 Fluent Design 高颜值界面**
    * 支持 **暗黑模式 (Dark Mode)** 和 **浅色模式 (Light Mode)** 无缝切换。
@@ -72,15 +96,16 @@
 
 ```
 WordMetadataEditor/
-├── metadata_engine.py      # 元数据核心引擎 (解析/修改 core.xml、app.xml 及 Win32 API 时间同步)
+├── metadata_engine.py      # Word/Excel/PowerPoint 属性引擎及 Win32 时间同步
 ├── main.py                 # 主程序入口 (FluentWindow 导航框架)
 ├── run.bat                 # Windows 一键启动脚本
-├── test_document.docx      # 默认测试文档
+├── tests/                  # Office 属性、完整性和界面回归测试
 ├── README.md               # 中文说明文档
 ├── README_EN.md            # English Documentation
 └── ui/                     # UI 视图模块
     ├── __init__.py
     ├── i18n.py                   # 国际化多语言引擎 (Simplified Chinese & English)
+    ├── file_filters.py           # 统一 Office 文件选择过滤器
     ├── single_file_interface.py  # 单文件精修页面
     ├── batch_interface.py        # 批量处理与脱敏页面
     └── settings_interface.py     # 设置与关于页面 (包含语言切换与 GitHub 作者链接)
@@ -99,10 +124,20 @@ WordMetadataEditor/
 python main.py
 ```
 
-### 2. 打包为 Windows 单文件 EXE
+### 2. 验证源码
+
+安装测试依赖 `pytest`、`python-docx`、`openpyxl`、`python-pptx` 后运行（应用运行依赖仍为 `PySide6` 与 `PySide6-Fluent-Widgets`）：
+
+```powershell
+python -m pytest tests -q
+```
+
+测试覆盖六类文件属性往返、非属性内容字节一致性、缺失属性补建、写入失败保护、Windows 时间同步及 Qt 界面和混合批量处理。宏测试使用合成 VBA 二进制载荷验证保留，不执行 VBA。
+
+### 3. 打包为 Windows 单文件 EXE
 使用 PyInstaller 进行打包：
 ```bash
-pyinstaller --noconsole --onefile --icon="assets/app_icon.ico" --add-data "assets;assets" --name "WordMetadataEditor" --exclude-module PyQt5 --clean main.py
+pyinstaller --noconsole --onefile --icon="assets/app_icon.ico" --add-data "assets;assets" --name "OfficeMetadataEditor_v1.2.0_x64" --exclude-module PyQt5 --clean main.py
 ```
 
 ---
