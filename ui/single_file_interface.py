@@ -13,7 +13,7 @@ from qfluentwidgets import (
     StrongBodyLabel
 )
 
-from metadata_engine import OfficeMetadataEngine, MetadataError, is_supported_file, format_ooxml_datetime
+from metadata_engine import OfficeMetadataEngine, MetadataError, EncryptedFileError, is_supported_file, format_ooxml_datetime
 from ui.file_filters import office_file_filter
 from ui.i18n import i18n
 
@@ -224,7 +224,7 @@ class SingleFileInterface(ScrollArea):
         self.total_time_spin.setRange(0, 999999)
         self.total_time_spin.setSingleStep(30)
         tr2_v1.addWidget(self.total_time_spin)
-        self.total_time_hint = CaptionLabel(i18n.t("提示: 60 分钟 = 1 小时；Excel 可能不显示此属性", "60 mins = 1 hour; Excel may not display this property"), time_card)
+        self.total_time_hint = CaptionLabel(i18n.t("提示: 60 分钟 = 1 小时；统计值的显示取决于 Office 应用", "60 mins = 1 hour; displayed statistics depend on the Office application"), time_card)
         self.total_time_hint.setWordWrap(True)
         tr2_v1.addWidget(self.total_time_hint)
 
@@ -326,7 +326,8 @@ class SingleFileInterface(ScrollArea):
         self.btn_now_modified.setText(i18n.t("设为当前", "Set Now"))
 
         self.lbl_total_time.setText(i18n.t("总编辑时间 (Total Editing Time / 分钟)", "Total Editing Time (Minutes)"))
-        self.total_time_hint.setText(i18n.t("提示: 60 分钟 = 1 小时；Excel 可能不显示此属性", "60 mins = 1 hour; Excel may not display this property"))
+        self.total_time_hint.setText(i18n.t("提示: 60 分钟 = 1 小时；统计值的显示取决于 Office 应用", "60 mins = 1 hour; displayed statistics depend on the Office application"))
+        self._update_time_hint()
         self.lbl_revision.setText(i18n.t("修订版本号 (Revision Number)", "Revision Number"))
         self.revision_hint.setText(i18n.t("提示: 属性显示及更新方式因 Office 应用而异", "Display and update behavior varies by Office application"))
 
@@ -358,13 +359,19 @@ class SingleFileInterface(ScrollArea):
 
         try:
             meta = OfficeMetadataEngine.read_metadata(file_path)
-        except MetadataError:
+        except MetadataError as exc:
+            message = i18n.t(
+                "请选择有效的 Office 文件。旧版格式支持常见的未加密 DOC、XLS（97–2003）和 PPT 文件。",
+                "Select a valid Office file. Legacy support covers common unencrypted DOC, XLS (97–2003) and PPT files."
+            )
+            if isinstance(exc, EncryptedFileError):
+                message = i18n.t(
+                    "此文件已加密，暂不支持读取或修改。请先在 Office 中另存为未加密副本。",
+                    "This file is encrypted and cannot be edited. Save an unencrypted copy in Office first."
+                )
             InfoBar.error(
                 title=i18n.t("无法加载文件", "Unable to Load File"),
-                content=i18n.t(
-                    "请选择有效的 .docx / .docm / .xlsx / .xlsm / .pptx / .pptm 文件；不支持旧版或加密文件。",
-                    "Select a valid .docx / .docm / .xlsx / .xlsm / .pptx / .pptm file. Legacy and encrypted files are unsupported."
-                ),
+                content=message,
                 position=InfoBarPosition.TOP, duration=5000, parent=self
             )
             return
@@ -403,6 +410,7 @@ class SingleFileInterface(ScrollArea):
         except ValueError:
             self.revision_spin.setValue(1)
 
+        self._update_time_hint()
         self.form_container.show()
 
         InfoBar.success(
@@ -414,6 +422,18 @@ class SingleFileInterface(ScrollArea):
             duration=3000,
             parent=self
         )
+
+    def _update_time_hint(self):
+        if self.current_file_path and os.path.splitext(self.current_file_path)[1].lower() == '.doc':
+            self.total_time_hint.setText(i18n.t(
+                '旧版 Word 可能显示文档内部的统计值；此处修改文件摘要中的编辑时长。',
+                'Legacy Word may display internal statistics; this edits the summary editing duration.'
+            ))
+        else:
+            self.total_time_hint.setText(i18n.t(
+                '提示: 60 分钟 = 1 小时；统计值的显示取决于 Office 应用',
+                '60 mins = 1 hour; displayed statistics depend on the Office application'
+            ))
 
     @staticmethod
     def _display_time(value):

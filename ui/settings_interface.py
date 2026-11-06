@@ -90,7 +90,7 @@ class SettingsInterface(ScrollArea):
         icon_widget.setFixedSize(48, 48)
 
         info_vbox = QVBoxLayout()
-        self.app_name_label = StrongBodyLabel(i18n.t("Office 文档属性高级编辑器 v1.2.0", "Office Metadata Editor v1.2.0"), about_card)
+        self.app_name_label = StrongBodyLabel(i18n.t("Office 文档属性高级编辑器 v1.3.0", "Office Metadata Editor v1.3.0"), about_card)
         self.app_desc_label = CaptionLabel(
             i18n.t(
                 "支持 Word、Excel、PowerPoint 的 Office 文件属性编辑器。",
@@ -151,7 +151,7 @@ class SettingsInterface(ScrollArea):
         self.radio_dark.setText(i18n.t("暗黑模式 (Dark Mode)", "Dark Mode"))
         self.radio_light.setText(i18n.t("浅色模式 (Light Mode)", "Light Mode"))
         self.lang_card_title.setText(i18n.t("界面语言 (Language)", "Language Settings"))
-        self.app_name_label.setText(i18n.t("Office 文档属性高级编辑器 v1.2.0", "Office Metadata Editor v1.2.0"))
+        self.app_name_label.setText(i18n.t("Office 文档属性高级编辑器 v1.3.0", "Office Metadata Editor v1.3.0"))
         self.app_desc_label.setText(
             i18n.t(
                 "支持 Word、Excel、PowerPoint 的 Office 文件属性编辑器。",

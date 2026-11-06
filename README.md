@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Release-v1.2.0-blue?style=flat-square&logo=github" alt="Release">
+  <img src="https://img.shields.io/badge/Release-v1.3.0-blue?style=flat-square&logo=github" alt="Release">
   <img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/Style-Win11%20Fluent%20Design-0078D4?style=flat-square&logo=windows11" alt="Style">
   <img src="https://img.shields.io/badge/Python-3.9%2B-blue?style=flat-square&logo=python" alt="Python">
@@ -18,6 +18,24 @@
 </p>
 
 一套基于 **PySide6** 与 **Windows 11 Fluent Design** 打造的 Office 文件元数据及文件系统属性编辑软件，支持 Microsoft Word、Excel 和 PowerPoint。
+
+---
+
+## v1.3.0：XLSB 与旧版 Office 文件
+
+| 文件类型 | 支持格式 |
+| --- | --- |
+| Word 文档 | `.docx`、`.docm`、常见未加密 `.doc` |
+| Excel 工作簿 | `.xlsx`、`.xlsm`、`.xlsb`、未加密 BIFF8 `.xls`（97–2003） |
+| PowerPoint 演示文稿 | `.pptx`、`.pptm`、常见未加密 `.ppt`（97–2003） |
+
+- 新格式已接入单文件浏览、拖拽、混合批量处理、递归扫描、属性脱敏及 Windows 文件时间同步。
+- `.xlsb` 直接修改包内属性，保留二进制工作簿、公式和其他部件；兼容通过 Default 或 Override 声明主部件内容类型的文件。
+- `.doc` / `.xls` / `.ppt` 在 Windows 上通过系统 OLE 属性接口读写；无需安装 Office，也无需增加第三方运行依赖。采用临时副本、属性回读验证及原子替换保存。
+- 更新作者、修改者、标题、备注、公司、时间、修订号等摘要属性，同时保留未知属性、自定义属性及非属性流。加密文件、错误扩展名和不支持的旧格式会被拒绝修改。
+- 不保证所有应用都显示或保留相同统计值。实测旧版 `.doc` 的 Word 界面可能采用内部统计而不采用摘要中的编辑时长；界面会显示此限制。正文、修订、批注和云端历史不属于属性脱敏范围。
+
+v1.3.0 Windows x64 绿色版已包含上述格式支持，下载入口与 SHA-256 校验文件见下方；历史版本继续保留。
 
 ---
 
@@ -35,9 +53,9 @@
 - **保存与结果反馈**：同目录临时文件及原子替换；损坏或格式不匹配的文件报告失败，批量任务结束后保留每个文件的处理结果。
 - **时间修复**：修复批量创建时间未生效；界面使用本地时间，文件属性存为 UTC；修复 64 位 Windows 文件时间同步。
 
-范围：本工具修改的是整个文件的属性，不编辑单元格或幻灯片正文。旧版 `.doc` / `.xls` / `.ppt`、`.xlsb` 和加密文件不在支持范围内。总编辑时间等属性在不同 Office 应用中的显示及保留方式可能不同；Excel 可能不显示该字段。Microsoft 的 [Excel 内置文档属性说明](https://learn.microsoft.com/en-us/office/vba/api/excel.workbook.builtindocumentproperties) 也指出，并非每个内置属性都有已定义的值。脱敏处理清理此工具列出的属性，不清理正文、批注、修订记录或自定义属性。
+范围：本工具修改的是整个文件的属性，不编辑单元格或幻灯片正文。v1.2.0 发行版不支持旧版 `.doc` / `.xls` / `.ppt`、`.xlsb` 和加密文件。总编辑时间等属性在不同 Office 应用中的显示及保留方式可能不同；Excel 可能不显示该字段。Microsoft 的 [Excel 内置文档属性说明](https://learn.microsoft.com/en-us/office/vba/api/excel.workbook.builtindocumentproperties) 也指出，并非每个内置属性都有已定义的值。脱敏处理清理此工具列出的属性，不清理正文、批注、修订记录或自定义属性。
 
-v1.2.0 提供 Windows x64 绿色单文件 EXE 与 ZIP，下载入口见下方；发行版附件同时提供 SHA-256 校验文件。历史版本继续保留。
+当前 v1.3.0 下载包含本节功能与上方新增的旧格式支持；此处保留 v1.2.0 功能说明作为版本历史。
 
 ---
 
@@ -55,11 +73,11 @@ v1.2.0 提供 Windows x64 绿色单文件 EXE 与 ZIP，下载入口见下方；
 
 无需安装 Python 或配置任何依赖环境，直接下载 Windows 独立单文件版：
 
-👉 **[查看 v1.2.0 发行版](https://github.com/treetree-sha/WordMetadataEditor/releases/tag/v1.2.0)**
+👉 **[查看 v1.3.0 发行版](https://github.com/treetree-sha/WordMetadataEditor/releases/tag/v1.3.0)**
 
-- [下载 EXE 单文件版](https://github.com/treetree-sha/WordMetadataEditor/releases/download/v1.2.0/OfficeMetadataEditor_v1.2.0_x64.exe)
-- [下载 ZIP（含使用说明与许可证）](https://github.com/treetree-sha/WordMetadataEditor/releases/download/v1.2.0/OfficeMetadataEditor_v1.2.0_x64.zip)
-- [下载 SHA-256 校验文件](https://github.com/treetree-sha/WordMetadataEditor/releases/download/v1.2.0/OfficeMetadataEditor_v1.2.0_x64.SHA256.txt)
+- [下载 EXE 单文件版](https://github.com/treetree-sha/WordMetadataEditor/releases/download/v1.3.0/OfficeMetadataEditor_v1.3.0_x64.exe)
+- [下载 ZIP（含使用说明与许可证）](https://github.com/treetree-sha/WordMetadataEditor/releases/download/v1.3.0/OfficeMetadataEditor_v1.3.0_x64.zip)
+- [下载 SHA-256 校验文件](https://github.com/treetree-sha/WordMetadataEditor/releases/download/v1.3.0/OfficeMetadataEditor_v1.3.0_x64.SHA256.txt)
 
 ---
 
@@ -96,7 +114,9 @@ v1.2.0 提供 Windows x64 绿色单文件 EXE 与 ZIP，下载入口见下方；
 
 ```
 WordMetadataEditor/
-├── metadata_engine.py      # Word/Excel/PowerPoint 属性引擎及 Win32 时间同步
+├── metadata_engine.py      # 统一属性引擎及 Win32 时间同步
+├── ole_metadata.py         # Windows 原生 OLE 属性读写和旧格式检查
+├── metadata_errors.py      # 文件/加密错误类型
 ├── main.py                 # 主程序入口 (FluentWindow 导航框架)
 ├── run.bat                 # Windows 一键启动脚本
 ├── tests/                  # Office 属性、完整性和界面回归测试
@@ -132,12 +152,12 @@ python main.py
 python -m pytest tests -q
 ```
 
-测试覆盖六类文件属性往返、非属性内容字节一致性、缺失属性补建、写入失败保护、Windows 时间同步及 Qt 界面和混合批量处理。宏测试使用合成 VBA 二进制载荷验证保留，不执行 VBA。
+测试覆盖十种格式的属性及容器行为、非属性内容一致性、缺失属性补建、写入失败保护、加密拒绝、Windows 时间同步和 Qt 混合批量处理。Windows OLE 测试使用 `pywin32` 作为独立样本生成/校验依赖；正式软件的旧格式后端仅使用 `ctypes`。真实 Office 样本与独立打开检查见 [测试说明](tests/README.md)。宏流测试使用合成载荷，不执行 VBA。
 
 ### 3. 打包为 Windows 单文件 EXE
 使用 PyInstaller 进行打包：
 ```bash
-pyinstaller --noconsole --onefile --icon="assets/app_icon.ico" --add-data "assets;assets" --name "OfficeMetadataEditor_v1.2.0_x64" --exclude-module PyQt5 --clean main.py
+pyinstaller --noconsole --onefile --icon="assets/app_icon.ico" --add-data "assets;assets" --name "OfficeMetadataEditor_v1.3.0_x64" --exclude-module PyQt5 --clean main.py
 ```
 
 ---

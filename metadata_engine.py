@@ -1,12 +1,17 @@
 import ctypes
 import os
 import posixpath
+import shutil
 import tempfile
 import time
 import zipfile
 import xml.etree.ElementTree as ET
 from ctypes import wintypes
 from datetime import datetime, timezone
+
+from metadata_errors import MetadataError, EncryptedFileError
+from ole_metadata import (LEGACY_EXTENSIONS, CFB_SIGNATURE, compound_file, entries,
+                          read_metadata as read_legacy_metadata, write_metadata_to_copy)
 
 
 NAMESPACES = {
@@ -28,10 +33,11 @@ OFFICE_FORMATS = {
     '.docm': ('Word', 'word/document.xml', 'application/vnd.ms-word.document.macroEnabled.main+xml'),
     '.xlsx': ('Excel', 'xl/workbook.xml', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml'),
     '.xlsm': ('Excel', 'xl/workbook.xml', 'application/vnd.ms-excel.sheet.macroEnabled.main+xml'),
+    '.xlsb': ('Excel', 'xl/workbook.bin', 'application/vnd.ms-excel.sheet.binary.macroEnabled.main'),
     '.pptx': ('PowerPoint', 'ppt/presentation.xml', 'application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml'),
     '.pptm': ('PowerPoint', 'ppt/presentation.xml', 'application/vnd.ms-powerpoint.presentation.macroEnabled.main+xml'),
 }
-SUPPORTED_EXTENSIONS = tuple(OFFICE_FORMATS)
+SUPPORTED_EXTENSIONS = tuple(OFFICE_FORMATS) + LEGACY_EXTENSIONS
 FILE_PATTERNS = ' '.join('*' + ext for ext in SUPPORTED_EXTENSIONS)
 CORE_FIELDS = {
     'author': 'dc:creator', 'last_modified_by': 'cp:lastModifiedBy',
@@ -50,13 +56,9 @@ PROPERTY_PARTS = {
 }
 
 
-class MetadataError(ValueError):
-    """The selected file is not a readable supported Office package."""
-
-
 def is_supported_file(file_path):
     path = os.fspath(file_path)
-    return (os.path.splitext(path)[1].lower() in OFFICE_FORMATS
+    return (os.path.splitext(path)[1].lower() in SUPPORTED_EXTENSIONS
             and not os.path.basename(path).startswith('~$'))
 
 
@@ -102,7 +104,7 @@ class OfficeMetadataEngine:
 
     @staticmethod
     def _inspect_package(zf, file_path):
-        if not is_supported_file(file_path):
+        if not is_supported_file(file_path) or os.path.splitext(file_path)[1].lower() not in OFFICE_FORMATS:
             raise MetadataError('Unsupported Office file format')
         names = zf.namelist()
         if len(names) != len(set(names)):
@@ -111,7 +113,10 @@ class OfficeMetadataEngine:
         types = ET.fromstring(zf.read('[Content_Types].xml'))
         rels = ET.fromstring(zf.read('_rels/.rels'))
         overrides = {node.get('PartName'): node.get('ContentType') for node in types}
-        if main_part not in names or overrides.get('/' + main_part) != content_type:
+        defaults = {node.get('Extension', '').lower(): node.get('ContentType') for node in types
+                    if node.tag == f'{{{NAMESPACES["ct"]}}}Default'}
+        main_type = overrides.get('/' + main_part, defaults.get(main_part.rsplit('.', 1)[-1].lower()))
+        if main_part not in names or main_type != content_type:
             raise MetadataError('File extension does not match the Office package')
         paths = {}
         for kind, (default, ns, root_tag, rel_type, _) in PROPERTY_PARTS.items():
@@ -136,20 +141,37 @@ class OfficeMetadataEngine:
         return types, rels, paths
 
     @staticmethod
+    def _reject_encrypted_package(file_path):
+        with open(file_path, 'rb') as source:
+            signature = source.read(8)
+        if signature == CFB_SIGNATURE:
+            with compound_file(file_path) as storage:
+                names = {name for name, _, _ in entries(storage)}
+                if 'EncryptedPackage' in names or 'EncryptionInfo' in names:
+                    raise EncryptedFileError('Encrypted Office packages are not supported')
+            raise MetadataError('File extension does not match the Office package')
+
+    @staticmethod
     def read_metadata(file_path):
         file_path = os.fspath(file_path)
         try:
-            with zipfile.ZipFile(file_path, 'r') as zf:
-                _, _, paths = OfficeMetadataEngine._inspect_package(zf, file_path)
-                metadata = {key: '' for key in (*CORE_FIELDS, *APP_FIELDS)}
-                metadata.update(revision='1', total_editing_time='0')
-                for kind, fields in (('core', CORE_FIELDS), ('app', APP_FIELDS)):
-                    if paths[kind] in zf.namelist():
-                        root = ET.fromstring(zf.read(paths[kind]))
-                        for key, tag in fields.items():
-                            node = root.find(tag, NAMESPACES)
-                            if node is not None and node.text:
-                                metadata[key] = node.text
+            if not is_supported_file(file_path):
+                raise MetadataError('Unsupported Office file format')
+            metadata = {key: '' for key in (*CORE_FIELDS, *APP_FIELDS)}
+            metadata.update(revision='1', total_editing_time='0')
+            if os.path.splitext(file_path)[1].lower() in LEGACY_EXTENSIONS:
+                metadata.update(read_legacy_metadata(file_path))
+            else:
+                OfficeMetadataEngine._reject_encrypted_package(file_path)
+                with zipfile.ZipFile(file_path, 'r') as zf:
+                    _, _, paths = OfficeMetadataEngine._inspect_package(zf, file_path)
+                    for kind, fields in (('core', CORE_FIELDS), ('app', APP_FIELDS)):
+                        if paths[kind] in zf.namelist():
+                            root = ET.fromstring(zf.read(paths[kind]))
+                            for key, tag in fields.items():
+                                node = root.find(tag, NAMESPACES)
+                                if node is not None and node.text:
+                                    metadata[key] = node.text
             stat = os.stat(file_path)
             metadata.update(
                 file_size=stat.st_size,
@@ -157,15 +179,20 @@ class OfficeMetadataEngine:
                 fs_modified_time=datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S'),
             )
             return metadata
-        except (OSError, KeyError, ET.ParseError, zipfile.BadZipFile, RuntimeError, ValueError) as exc:
+        except MetadataError:
+            raise
+        except (OSError, KeyError, ET.ParseError, zipfile.BadZipFile, RuntimeError, ValueError, OverflowError) as exc:
             raise MetadataError(f'Cannot read Office metadata: {exc}') from exc
 
     @staticmethod
     def write_metadata(file_path, new_meta, sync_fs_time=True):
-        """Atomically replace the package; leave the original intact on failure."""
+        """Update a same-directory copy and replace only after all writes succeed."""
         file_path = os.path.abspath(os.fspath(file_path))
         temp_path = None
         try:
+            if not is_supported_file(file_path):
+                raise MetadataError('Unsupported Office file format')
+            extension = os.path.splitext(file_path)[1].lower()
             new_meta = dict(new_meta)
             for key in ('created_time', 'modified_time'):
                 if new_meta.get(key):
@@ -173,46 +200,25 @@ class OfficeMetadataEngine:
             for key in ('total_editing_time', 'revision'):
                 if key in new_meta and int(new_meta[key]) < 0:
                     raise ValueError(f'{key} must be nonnegative')
-            with zipfile.ZipFile(file_path, 'r') as zin:
-                types, rels, paths = OfficeMetadataEngine._inspect_package(zin, file_path)
-                updates = {}
-                manifests_changed = False
-                for kind, fields, updater in (
-                    ('core', CORE_FIELDS, OfficeMetadataEngine._update_core_xml),
-                    ('app', {'total_editing_time', 'company'}, OfficeMetadataEngine._update_app_xml),
-                ):
-                    if not any(key in new_meta for key in fields):
-                        continue
-                    path = paths[kind]
-                    _, ns, root_tag, rel_type, content_type = PROPERTY_PARTS[kind]
-                    xml = zin.read(path) if path in zin.namelist() else ET.tostring(ET.Element(f'{{{ns}}}{root_tag}'))
-                    updates[path] = updater(xml, new_meta)
-                    if not any(node.get('PartName') == '/' + path for node in types):
-                        ET.SubElement(types, f'{{{NAMESPACES["ct"]}}}Override',
-                                      PartName='/' + path, ContentType=content_type)
-                        manifests_changed = True
-                    if not any(node.get('Type') == rel_type for node in rels):
-                        used_ids = {node.get('Id') for node in rels}
-                        index = 1
-                        while f'rId{index}' in used_ids:
-                            index += 1
-                        ET.SubElement(rels, f'{{{NAMESPACES["rel"]}}}Relationship',
-                                      Id=f'rId{index}', Type=rel_type, Target=path)
-                        manifests_changed = True
-                if manifests_changed:
-                    updates['[Content_Types].xml'] = ET.tostring(types, encoding='utf-8', xml_declaration=True)
-                    updates['_rels/.rels'] = ET.tostring(rels, encoding='utf-8', xml_declaration=True)
-                if not updates:
-                    return True
-                fd, temp_path = tempfile.mkstemp(prefix='.office_metadata_', suffix='.tmp', dir=os.path.dirname(file_path))
-                os.close(fd)
-                with zipfile.ZipFile(temp_path, 'w') as zout:
-                    zout.comment = zin.comment
-                    for item in zin.infolist():
-                        content = updates.pop(item.filename) if item.filename in updates else zin.read(item)
-                        zout.writestr(item, content)
-                    for path, content in updates.items():
-                        zout.writestr(path, content, compress_type=zipfile.ZIP_DEFLATED)
+            if extension in LEGACY_EXTENSIONS:
+                read_legacy_metadata(file_path)  # Reject encrypted/mismatched sources before copying.
+            else:
+                OfficeMetadataEngine._reject_encrypted_package(file_path)
+            fd, temp_path = tempfile.mkstemp(prefix='.office_metadata_', suffix='.tmp', dir=os.path.dirname(file_path))
+            os.close(fd)
+            if extension in LEGACY_EXTENSIONS:
+                shutil.copyfile(file_path, temp_path)
+                write_metadata_to_copy(temp_path, extension, new_meta)
+                actual = read_legacy_metadata(temp_path, extension=extension)
+                editable = set(CORE_FIELDS) | {'company', 'total_editing_time'}
+                for key, value in new_meta.items():
+                    if key in editable and value is not None:
+                        if key in ('created_time', 'modified_time') and not value:
+                            continue
+                        if actual.get(key, '') != str(value):
+                            raise MetadataError(f'Legacy property did not round-trip: {key}')
+            elif not OfficeMetadataEngine._write_package(file_path, temp_path, new_meta):
+                return True
             # Windows scanners/indexers can briefly hold a newly created file.
             for attempt in range(4):
                 try:
@@ -228,12 +234,54 @@ class OfficeMetadataEngine:
                 if times and not set_windows_file_times(file_path, times.get('created_time'), times.get('modified_time')):
                     print('Metadata saved, but file system timestamps could not be synchronized.')
             return True
-        except (OSError, KeyError, ET.ParseError, zipfile.BadZipFile, RuntimeError, ValueError, TypeError) as exc:
+        except (OSError, KeyError, ET.ParseError, zipfile.BadZipFile, RuntimeError, ValueError, TypeError, OverflowError) as exc:
             print(f'Error writing Office metadata: {exc}')
             return False
         finally:
             if temp_path and os.path.exists(temp_path):
                 os.remove(temp_path)
+
+    @staticmethod
+    def _write_package(file_path, temp_path, new_meta):
+        with zipfile.ZipFile(file_path, 'r') as zin:
+            types, rels, paths = OfficeMetadataEngine._inspect_package(zin, file_path)
+            updates = {}
+            manifests_changed = False
+            for kind, fields, updater in (
+                ('core', CORE_FIELDS, OfficeMetadataEngine._update_core_xml),
+                ('app', {'total_editing_time', 'company'}, OfficeMetadataEngine._update_app_xml),
+            ):
+                if not any(key in new_meta for key in fields):
+                    continue
+                path = paths[kind]
+                _, ns, root_tag, rel_type, content_type = PROPERTY_PARTS[kind]
+                xml = zin.read(path) if path in zin.namelist() else ET.tostring(ET.Element(f'{{{ns}}}{root_tag}'))
+                updates[path] = updater(xml, new_meta)
+                if not any(node.get('PartName') == '/' + path for node in types):
+                    ET.SubElement(types, f'{{{NAMESPACES["ct"]}}}Override',
+                                  PartName='/' + path, ContentType=content_type)
+                    manifests_changed = True
+                if not any(node.get('Type') == rel_type for node in rels):
+                    used_ids = {node.get('Id') for node in rels}
+                    index = 1
+                    while f'rId{index}' in used_ids:
+                        index += 1
+                    ET.SubElement(rels, f'{{{NAMESPACES["rel"]}}}Relationship',
+                                  Id=f'rId{index}', Type=rel_type, Target=path)
+                    manifests_changed = True
+            if manifests_changed:
+                updates['[Content_Types].xml'] = ET.tostring(types, encoding='utf-8', xml_declaration=True)
+                updates['_rels/.rels'] = ET.tostring(rels, encoding='utf-8', xml_declaration=True)
+            if not updates:
+                return False
+            with zipfile.ZipFile(temp_path, 'w') as zout:
+                zout.comment = zin.comment
+                for item in zin.infolist():
+                    content = updates.pop(item.filename) if item.filename in updates else zin.read(item)
+                    zout.writestr(item, content)
+                for path, content in updates.items():
+                    zout.writestr(path, content, compress_type=zipfile.ZIP_DEFLATED)
+        return True
 
     @staticmethod
     def _update_core_xml(xml_bytes, new_meta):

@@ -1,5 +1,6 @@
 """Real OOXML round trips, content preservation, and failure atomicity."""
 import os
+import shutil
 import xml.etree.ElementTree as ET
 import zipfile
 from datetime import datetime, timezone, timedelta
@@ -38,6 +39,31 @@ def make_office(tmp_path):
     def make(ext):
         path = tmp_path / ('属性测试' + ext)
         family, main, content_type = OFFICE_FORMATS[ext]
+        if ext == '.xlsb':
+            native_dir = Path(os.environ.get('OFFICE_NATIVE_FIXTURES',
+                              str(Path(__file__).resolve().parents[1] / 'test_documents/native_office')))
+            sample = native_dir / 'sample.xlsb'
+            if sample.is_file():
+                shutil.copyfile(sample, path)
+            else:
+                # Container-level fixture only; native Office checks are opt-in.
+                parts = {
+                    main: b'opaque binary workbook test payload',
+                    '[Content_Types].xml': f'<Types xmlns="{NAMESPACES["ct"]}"><Default Extension="bin" ContentType="{content_type}"/></Types>'.encode(),
+                    '_rels/.rels': f'<Relationships xmlns="{NAMESPACES["rel"]}"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="{main}"/></Relationships>'.encode(),
+                    'docProps/core.xml': f'<cp:coreProperties xmlns:cp="{NAMESPACES["cp"]}"/>'.encode(),
+                    'docProps/app.xml': f'<Properties xmlns="{NAMESPACES["ep"]}"/>'.encode(),
+                }
+                # Register existing metadata just as a normal Office package does.
+                types = ET.fromstring(parts['[Content_Types].xml'])
+                rels = ET.fromstring(parts['_rels/.rels'])
+                for index, (name, _, _, rel_type, ctype) in enumerate(PROPERTY_PARTS.values(), 2):
+                    ET.SubElement(types, f'{{{NAMESPACES["ct"]}}}Override', PartName='/' + name, ContentType=ctype)
+                    ET.SubElement(rels, f'{{{NAMESPACES["rel"]}}}Relationship', Id=f'rId{index}', Type=rel_type, Target=name)
+                parts['[Content_Types].xml'] = ET.tostring(types)
+                parts['_rels/.rels'] = ET.tostring(rels)
+                rewrite(path, parts)
+            return path
         if family == 'Word':
             doc = Document()
             doc.add_heading('Original content', 0)
@@ -207,7 +233,7 @@ def test_utc_conversion_and_compatibility():
     assert format_ooxml_datetime('2025-01-02T03:04:05.123456Z') == '2025-01-02T03:04:05.123456Z'
     assert is_supported_file('报告.XLSX')
     assert not is_supported_file('~$报告.xlsx')
-    assert not is_supported_file('旧版.ppt')
+    assert is_supported_file('旧版.ppt')
 
 
 @pytest.mark.skipif(os.name != 'nt', reason='Windows file system API')

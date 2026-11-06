@@ -41,7 +41,7 @@ def window(app, monkeypatch):
     app.processEvents()
 
 
-@pytest.mark.parametrize('ext', ['.xlsx', '.pptx', '.xlsm', '.pptm'])
+@pytest.mark.parametrize('ext', ['.xlsx', '.pptx', '.xlsm', '.pptm', '.xlsb'])
 def test_load_save_and_anonymize_in_single_form(window, make_office, ext):
     path = make_office(ext)
     before = contents(path)
@@ -82,7 +82,7 @@ def test_drag_drop_filters_and_bilingual_ui(window, make_office, app):
         i18n.set_language(lang)
         app.processEvents()
         assert 'Office' in window.windowTitle()
-        assert all(pattern in office_file_filter() for pattern in ('*.xlsx', '*.xlsm', '*.pptx', '*.pptm'))
+        assert all(pattern in office_file_filter() for pattern in ('*.xlsx', '*.xlsm', '*.xlsb', '*.xls', '*.doc', '*.pptx', '*.pptm', '*.ppt'))
         assert 'PowerPoint' in form.subtitle_label.text()
 
 
@@ -157,7 +157,7 @@ def test_recursive_folder_import_and_busy_controls(window, make_office):
     nested.mkdir()
     files[-1].rename(nested / files[-1].name)
     (nested / '~$locked.xlsx').write_bytes(b'lock')
-    (nested / 'legacy.xls').write_bytes(b'legacy')
+    (nested / 'unsupported.txt').write_bytes(b'unsupported')
     batch = window.batch_interface
     with patch.object(QFileDialog, 'getExistingDirectory', return_value=str(files[0].parent)):
         batch._add_folder()
@@ -195,3 +195,77 @@ def test_real_background_batch_restores_controls_and_results(window, make_office
     assert batch.btn_add_files.isEnabled()
     assert all(batch.table.item(index, 5).text() == '成功' for index in range(2))
     assert all(Engine.read_metadata(path)['author'] == '后台线程作者' for path in batch.file_paths)
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='Windows OLE backend')
+@pytest.mark.parametrize('ext', ['.doc', '.xls', '.ppt'])
+def test_legacy_form_drag_drop_save_and_anonymize(window, request, ext):
+    from test_legacy_metadata import ole_contents
+    path = request.getfixturevalue('make_legacy')(ext)
+    form = window.single_interface
+    mime = QMimeData()
+    mime.setUrls([QUrl.fromLocalFile(str(path))])
+    enter = QDragEnterEvent(QPoint(10, 10), Qt.CopyAction, mime, Qt.LeftButton, Qt.NoModifier)
+    form.drop_card.dragEnterEvent(enter)
+    assert enter.isAccepted()
+    form.drop_card.dropEvent(QDropEvent(QPointF(10, 10), Qt.CopyAction, mime, Qt.LeftButton, Qt.NoModifier))
+    assert Path(form.current_file_path) == path
+    before = ole_contents(path)
+    form.author_input.setText('旧版界面作者')
+    form.comments_input.setText('旧版备注')
+    form.sync_switch.setChecked(False)
+    assert form._save_metadata()
+    assert Engine.read_metadata(path)['author'] == '旧版界面作者'
+    if ext == '.doc':
+        assert '摘要' in form.total_time_hint.text()
+        i18n.set_language('en')
+        assert 'summary' in form.total_time_hint.text()
+    form._anonymize_metadata()
+    meta = Engine.read_metadata(path)
+    assert all(meta[key] == '' for key in ('author', 'last_modified_by', 'company', 'comments'))
+    assert meta['total_editing_time'] == '0'
+    after = ole_contents(path)
+    for name in before.keys() - {'\x05SummaryInformation', '\x05DocumentSummaryInformation'}:
+        assert before[name] == after[name]
+
+
+@pytest.fixture
+def make_legacy(request, tmp_path):
+    # Reuse the independent structured-storage fixture without a runtime dependency.
+    from test_legacy_metadata import make_legacy as fixture
+    return fixture.__wrapped__(tmp_path)
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='Windows OLE backend')
+def test_encrypted_legacy_load_has_explicit_message(window, make_legacy, monkeypatch):
+    valid = make_legacy('.doc')
+    window.single_interface.load_file(str(valid))
+    encrypted = make_legacy('.xls', encrypted=True)
+    messages = []
+    monkeypatch.setattr(InfoBar, 'error', lambda **kwargs: messages.append(kwargs['content']))
+    window.single_interface.load_file(str(encrypted))
+    assert window.single_interface.current_file_path == str(valid)
+    assert messages and '加密' in messages[-1]
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='Windows OLE backend')
+def test_mixed_legacy_batch_on_real_qthread(window, make_legacy, make_office, app):
+    batch = window.batch_interface
+    paths = [str(make_legacy(ext)) for ext in ('.doc', '.xls', '.ppt')]
+    paths += [str(make_office(ext)) for ext in ('.xlsx', '.xlsb', '.pptx')]
+    batch._add_paths(paths)
+    batch.chk_author.setChecked(True)
+    batch.input_author.setText('混合后台作者')
+    batch.chk_comments.setChecked(True)
+    batch.input_comments.setText('混合后台备注')
+    batch.sync_fs_switch.setChecked(False)
+    batch._run_batch_process()
+    loop = QEventLoop()
+    batch.thread.finished.connect(loop.quit)
+    QTimer.singleShot(5000, loop.quit)
+    loop.exec()
+    assert batch.thread.wait(2000)
+    app.processEvents()
+    assert not batch._batch_running
+    assert all(batch.table.item(i, 5).text() == '成功' for i in range(len(paths)))
+    assert all(Engine.read_metadata(path)['author'] == '混合后台作者' for path in paths)

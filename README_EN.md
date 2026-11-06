@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Release-v1.2.0-blue?style=flat-square&logo=github" alt="Release">
+  <img src="https://img.shields.io/badge/Release-v1.3.0-blue?style=flat-square&logo=github" alt="Release">
   <img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/Style-Win11%20Fluent%20Design-0078D4?style=flat-square&logo=windows11" alt="Style">
   <img src="https://img.shields.io/badge/Python-3.9%2B-blue?style=flat-square&logo=python" alt="Python">
@@ -18,6 +18,24 @@
 </p>
 
 A desktop editor for Microsoft Word, Excel and PowerPoint file metadata and Windows timestamps, built with **PySide6** and **Windows 11 Fluent Design**.
+
+---
+
+## v1.3.0: XLSB and Legacy Office Files
+
+| File type | Supported formats |
+| --- | --- |
+| Word | `.docx`, `.docm`, common unencrypted `.doc` |
+| Excel | `.xlsx`, `.xlsm`, `.xlsb`, unencrypted BIFF8 `.xls` (97–2003) |
+| PowerPoint | `.pptx`, `.pptm`, common unencrypted `.ppt` (97–2003) |
+
+- New formats work with browsing, drag and drop, mixed batches, folder scans, anonymization and Windows timestamp synchronization.
+- XLSB updates preserve binary workbook parts. Both Default and Override content type declarations are supported.
+- Legacy files use Windows native OLE property interfaces, with no Office installation or additional runtime dependencies. Writes use a temporary copy, metadata readback and atomic replacement.
+- Preserve unknown/custom properties and non-property streams. Reject encrypted files, mismatched extensions and unsupported older formats.
+- Applications may display or retain statistics differently. In particular, Word may show internal editing statistics for `.doc` instead of the summary editing duration; the UI explains this limitation. Content, tracked changes, annotations and cloud history are outside metadata anonymization.
+
+v1.3.0 includes the formats above in the Windows x64 EXE and ZIP. Download links and SHA-256 checksums are below; previous releases remain available.
 
 ---
 
@@ -35,9 +53,9 @@ A desktop editor for Microsoft Word, Excel and PowerPoint file metadata and Wind
 - Save through a temporary file in the same directory and atomic replacement. Reject corrupt or mismatched files; retain per-file batch results after completion.
 - Fix batch creation timestamps and 64-bit Windows timestamp synchronization. Display local times and store UTC timestamps.
 
-This tool edits file-level properties. It does not edit cells or slide content. Legacy `.doc` / `.xls` / `.ppt`, `.xlsb` and encrypted files are unsupported. Office applications differ in how they display and retain properties such as total editing time; Excel may not display it. Microsoft's [Excel built-in property documentation](https://learn.microsoft.com/en-us/office/vba/api/excel.workbook.builtindocumentproperties) notes that some properties do not have defined values. Anonymization clears the listed metadata fields, not document content, annotations, tracked changes or custom properties.
+This tool edits file-level properties. It does not edit cells or slide content. The v1.2.0 release does not support legacy `.doc` / `.xls` / `.ppt`, `.xlsb` or encrypted files. Office applications differ in how they display and retain properties such as total editing time; Excel may not display it. Microsoft's [Excel built-in property documentation](https://learn.microsoft.com/en-us/office/vba/api/excel.workbook.builtindocumentproperties) notes that some properties do not have defined values. Anonymization clears the listed metadata fields, not document content, annotations, tracked changes or custom properties.
 
-v1.2.0 provides a portable Windows x64 EXE and ZIP, linked below, with a SHA-256 checksum attachment. Previous releases remain available.
+The current v1.3.0 download includes these features and the legacy format support described above. The v1.2.0 description is retained as release history.
 
 ---
 
@@ -55,11 +73,11 @@ v1.2.0 provides a portable Windows x64 EXE and ZIP, linked below, with a SHA-256
 
 No Python installation required. Download the portable standalone `.exe` for 64-bit Windows:
 
-👉 **[View the v1.2.0 release](https://github.com/treetree-sha/WordMetadataEditor/releases/tag/v1.2.0)**
+👉 **[View the v1.3.0 release](https://github.com/treetree-sha/WordMetadataEditor/releases/tag/v1.3.0)**
 
-- [Download standalone EXE](https://github.com/treetree-sha/WordMetadataEditor/releases/download/v1.2.0/OfficeMetadataEditor_v1.2.0_x64.exe)
-- [Download ZIP with instructions and license](https://github.com/treetree-sha/WordMetadataEditor/releases/download/v1.2.0/OfficeMetadataEditor_v1.2.0_x64.zip)
-- [Download SHA-256 checksums](https://github.com/treetree-sha/WordMetadataEditor/releases/download/v1.2.0/OfficeMetadataEditor_v1.2.0_x64.SHA256.txt)
+- [Download standalone EXE](https://github.com/treetree-sha/WordMetadataEditor/releases/download/v1.3.0/OfficeMetadataEditor_v1.3.0_x64.exe)
+- [Download ZIP with instructions and license](https://github.com/treetree-sha/WordMetadataEditor/releases/download/v1.3.0/OfficeMetadataEditor_v1.3.0_x64.zip)
+- [Download SHA-256 checksums](https://github.com/treetree-sha/WordMetadataEditor/releases/download/v1.3.0/OfficeMetadataEditor_v1.3.0_x64.SHA256.txt)
 
 ---
 
@@ -96,7 +114,9 @@ No Python installation required. Download the portable standalone `.exe` for 64-
 
 ```
 WordMetadataEditor/
-├── metadata_engine.py      # Core engine (XML parsing & Win32 timestamp sync)
+├── metadata_engine.py      # Unified metadata engine and timestamp sync
+├── ole_metadata.py         # Windows native OLE properties and legacy validation
+├── metadata_errors.py      # File and encryption errors
 ├── main.py                 # Main entry point (FluentWindow framework)
 ├── run.bat                 # Windows quick launch script
 ├── tests/                  # Office metadata, preservation and UI regression tests
@@ -127,12 +147,12 @@ Install `pytest`, `python-docx`, `openpyxl` and `python-pptx` for tests. Applica
 python -m pytest tests -q
 ```
 
-Tests cover six formats, byte preservation, missing metadata parts, failure atomicity, Windows timestamps, Qt forms and mixed batch processing. Macro tests use synthetic binary payloads to verify preservation without executing VBA.
+Tests cover ten formats, property/container preservation, missing metadata, failure atomicity, encryption rejection, Windows timestamps, Qt forms and mixed batches. OLE tests use `pywin32` for independent fixtures and validation; the production legacy backend uses only `ctypes`. See [test instructions](tests/README.md) for optional native Office fixtures and application checks. Macro tests use synthetic payloads without executing VBA.
 
 ### 3. Build Standalone EXE
 Pack into a single executable using PyInstaller:
 ```bash
-pyinstaller --noconsole --onefile --icon="assets/app_icon.ico" --add-data "assets;assets" --name "OfficeMetadataEditor_v1.2.0_x64" --exclude-module PyQt5 --clean main.py
+pyinstaller --noconsole --onefile --icon="assets/app_icon.ico" --add-data "assets;assets" --name "OfficeMetadataEditor_v1.3.0_x64" --exclude-module PyQt5 --clean main.py
 ```
 
 ---
